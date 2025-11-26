@@ -1,0 +1,41 @@
+# Makerfile for packaging all PCF components into a single solution.
+# Configure solution metadata once, then run `maker package` (if Maker CLI is installed)
+# or `maker run package` to build controls and export the solution zip.
+
+SOLUTION_NAME=PCF_DOAPP
+SOLUTION_PUBLISHER_NAME=Contoso Demo
+SOLUTION_PUBLISHER_PREFIX=cds
+SOLUTION_DIR=solution
+PACKAGE_TYPE=Unmanaged
+OUTPUT_ZIP=dist/$(SOLUTION_NAME).zip
+PAC=pac
+
+[default]
+deps = package
+
+task setup-solution:
+    npm install
+    mkdir .tmp 2>$null || true
+    if (-not (Test-Path $(SOLUTION_DIR))) { $(PAC) solution init --output-dir $(SOLUTION_DIR) --publisher-name "$(SOLUTION_PUBLISHER_NAME)" --publisher-prefix "$(SOLUTION_PUBLISHER_PREFIX)" --name $(SOLUTION_NAME) }
+
+# Adds every PCF project in packages/ to the solution (idempotent).
+task sync-components:
+    for %%P in (packages\react-control,packages\progress-bar-control,packages\form-control) do (
+        pushd $(SOLUTION_DIR) && $(PAC) solution add-reference --path ..\%%P && popd
+    )
+
+# Builds all workspace packages so the solution pack step has fresh bundles.
+task build:
+    npm run build --workspaces
+
+# Creates the output zip.
+task pack:
+    if (-not (Test-Path dist)) { mkdir dist }
+    pushd $(SOLUTION_DIR) && $(PAC) solution pack --zipfile ..\$(OUTPUT_ZIP) --folder . --packagetype $(PACKAGE_TYPE) && popd
+
+# High level target developers will run.
+task package:
+    maker run setup-solution
+    maker run sync-components
+    maker run build
+    maker run pack
