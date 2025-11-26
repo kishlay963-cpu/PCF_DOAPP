@@ -1,0 +1,52 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "workspace: build all",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build",
+				"--workspaces"
+			],
+			"group": "build"
+		},
+		{
+			"label": "workspace: build react-control",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build",
+				"--workspace",
+				"@pcf/react-control"
+			],
+			"group": "build"
+		},
+		{
+			"label": "workspace: build progress-bar",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build",
+				"--workspace",
+				"@pcf/progress-bar"
+			],
+			"group": "build"
+		},
+		{
+			"label": "workspace: build fluent-form",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build",
+				"--workspace",
+				"@pcf/fluent-form"
+			],
+			"group": "build"
+		}
+	]
+}

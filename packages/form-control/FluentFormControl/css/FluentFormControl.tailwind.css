@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :host {
+    @apply block font-sans text-gray-900;
+  }
+}
+
+@layer components {
+  .ff-section-title {
+    @apply text-xs font-semibold uppercase tracking-[0.2em] text-gray-500;
+  }
+
+  .ff-chip {
+    @apply inline-flex items-center rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-600;
+  }
+
+  .ff-pill {
+    @apply flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600;
+  }
+}
