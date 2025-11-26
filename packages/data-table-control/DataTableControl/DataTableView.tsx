@@ -1,6 +1,6 @@
 import * as React from "react";
 
-type StatusVariant = "on-track" | "at-risk" | "blocked";
+export type StatusVariant = "on-track" | "at-risk" | "blocked";
 
 interface CoverageMetric {
   coverageCount: number;
@@ -43,7 +43,7 @@ interface DatasetDetail {
   dataObjectsAndMeasure: DataObjectsAndMeasure;
 }
 
-interface TableRow {
+export interface TableRow {
   datasetName: string;
   datasetSummary: string;
   dataOwner: string;
@@ -56,7 +56,24 @@ interface TableRow {
   detail: DatasetDetail;
 }
 
-const initialRows: TableRow[] = [
+export interface TableSummary {
+  datasetName: string;
+  datasetSummary: string;
+  dataOwner: string;
+  dataOwnerRole: string;
+  dgo: string;
+  doSpoc: string;
+  descriptionValidation: string;
+  status: StatusVariant;
+  deadline: string;
+}
+
+export interface DetailEntry {
+  datasetName: string;
+  detail: DatasetDetail;
+}
+
+export const defaultRows: TableRow[] = [
   {
     datasetName: "Global Equity Trades",
     datasetSummary: "Daily executed orders captured across LSEG venues.",
@@ -319,6 +336,224 @@ const cloneRow = (row: TableRow): TableRow => ({
   detail: cloneDetail(row.detail),
 });
 
+export const defaultTableData: TableSummary[] = defaultRows.map(({ detail, ...summary }): TableSummary => ({
+  ...summary,
+}));
+
+export const defaultDetailData: DetailEntry[] = defaultRows.map(row => ({
+  datasetName: row.datasetName,
+  detail: cloneDetail(row.detail),
+}));
+
+const defaultDetailMap: Record<string, DatasetDetail> = defaultDetailData.reduce((acc, entry) => {
+  acc[entry.datasetName] = cloneDetail(entry.detail);
+  return acc;
+}, {} as Record<string, DatasetDetail>);
+
+const cloneDetailMap = (source: Record<string, DatasetDetail>): Record<string, DatasetDetail> => {
+  const result: Record<string, DatasetDetail> = {};
+  Object.keys(source).forEach(key => {
+    result[key] = cloneDetail(source[key]);
+  });
+  return result;
+};
+
+const createEmptyDetail = (datasetName: string): DatasetDetail => ({
+  businessUnit: "",
+  coverageCount: 0,
+  dataFrequency: "",
+  dataTypes: [],
+  geography: [],
+  history: "",
+  description: "",
+  domain: "",
+  subdomain: "",
+  features: [],
+  languages: [],
+  marketingUrl: "",
+  minimumDataFrequency: "",
+  name: datasetName,
+  regions: [],
+  tags: [],
+  timePeriod: "",
+  coverageMetric: {
+    coverageCount: 0,
+    dataFrequency: "",
+    dataTypes: "",
+    geography: "",
+    history: "",
+  },
+  dataObjectsAndMeasure: {
+    costScore: 0,
+    fundamentalsScore: 0,
+    overallScore: 0,
+    performanceScore: 0,
+    riskScore: 0,
+    sentimentScore: 0,
+    technicalScore: 0,
+    valuationsScore: 0,
+  },
+});
+
+const buildDeadlineMap = (sourceRows: TableRow[]): Record<string, string> => {
+  const next: Record<string, string> = {};
+  sourceRows.forEach(row => {
+    next[row.datasetName] = row.deadline;
+  });
+  return next;
+};
+
+const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === "string");
+
+const isCoverageMetric = (value: unknown): value is CoverageMetric => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const metric = value as CoverageMetric;
+  return (
+    typeof metric.coverageCount === "number" &&
+    typeof metric.dataFrequency === "string" &&
+    typeof metric.dataTypes === "string" &&
+    typeof metric.geography === "string" &&
+    typeof metric.history === "string"
+  );
+};
+
+const isDataObjectsAndMeasure = (value: unknown): value is DataObjectsAndMeasure => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const measure = value as DataObjectsAndMeasure;
+  return (
+    typeof measure.costScore === "number" &&
+    typeof measure.fundamentalsScore === "number" &&
+    typeof measure.overallScore === "number" &&
+    typeof measure.performanceScore === "number" &&
+    typeof measure.riskScore === "number" &&
+    typeof measure.sentimentScore === "number" &&
+    typeof measure.technicalScore === "number" &&
+    typeof measure.valuationsScore === "number"
+  );
+};
+
+const isDatasetDetail = (value: unknown): value is DatasetDetail => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const detail = value as DatasetDetail;
+  return (
+    typeof detail.businessUnit === "string" &&
+    typeof detail.coverageCount === "number" &&
+    typeof detail.dataFrequency === "string" &&
+    isStringArray(detail.dataTypes) &&
+    isStringArray(detail.geography) &&
+    typeof detail.history === "string" &&
+    typeof detail.description === "string" &&
+    typeof detail.domain === "string" &&
+    typeof detail.subdomain === "string" &&
+    isStringArray(detail.features) &&
+    isStringArray(detail.languages) &&
+    typeof detail.marketingUrl === "string" &&
+    typeof detail.minimumDataFrequency === "string" &&
+    typeof detail.name === "string" &&
+    isStringArray(detail.regions) &&
+    isStringArray(detail.tags) &&
+    typeof detail.timePeriod === "string" &&
+    isCoverageMetric(detail.coverageMetric) &&
+    isDataObjectsAndMeasure(detail.dataObjectsAndMeasure)
+  );
+};
+
+const isStatusVariantValue = (value: unknown): value is StatusVariant => value === "on-track" || value === "at-risk" || value === "blocked";
+
+const isTableSummary = (value: unknown): value is TableSummary => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const summary = value as TableSummary;
+  return (
+    typeof summary.datasetName === "string" &&
+    typeof summary.datasetSummary === "string" &&
+    typeof summary.dataOwner === "string" &&
+    typeof summary.dataOwnerRole === "string" &&
+    typeof summary.dgo === "string" &&
+    typeof summary.doSpoc === "string" &&
+    typeof summary.descriptionValidation === "string" &&
+    typeof summary.deadline === "string" &&
+    isStatusVariantValue(summary.status)
+  );
+};
+
+const isDetailEntry = (value: unknown): value is DetailEntry => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const entry = value as DetailEntry;
+  return typeof entry.datasetName === "string" && isDatasetDetail(entry.detail);
+};
+
+const cloneSummaries = (summaries: TableSummary[]): TableSummary[] => summaries.map(summary => ({ ...summary }));
+
+const parseTableSummaries = (dataJson?: string | null): TableSummary[] => {
+  if (!dataJson) {
+    return cloneSummaries(defaultTableData);
+  }
+  try {
+    const raw: unknown = JSON.parse(dataJson);
+    if (!Array.isArray(raw)) {
+      return cloneSummaries(defaultTableData);
+    }
+    const validSummaries = (raw as unknown[]).filter(isTableSummary);
+    if (validSummaries.length === 0) {
+      return cloneSummaries(defaultTableData);
+    }
+    return cloneSummaries(validSummaries);
+  } catch (error) {
+    return cloneSummaries(defaultTableData);
+  }
+};
+
+const parseDetailEntries = (dataJson?: string | null): Record<string, DatasetDetail> => {
+  if (!dataJson) {
+    return cloneDetailMap(defaultDetailMap);
+  }
+  try {
+    const raw: unknown = JSON.parse(dataJson);
+    const entries: DetailEntry[] = [];
+    if (Array.isArray(raw)) {
+      (raw as unknown[]).forEach(item => {
+        if (isDetailEntry(item)) {
+          entries.push(item);
+        }
+      });
+    } else if (raw && typeof raw === "object") {
+      Object.entries(raw as Record<string, unknown>).forEach(([key, value]) => {
+        if (isDatasetDetail(value)) {
+          entries.push({ datasetName: key, detail: value });
+        }
+      });
+    }
+
+    if (entries.length === 0) {
+      return cloneDetailMap(defaultDetailMap);
+    }
+
+    const detailMap: Record<string, DatasetDetail> = {};
+    entries.forEach(entry => {
+      detailMap[entry.datasetName] = cloneDetail(entry.detail);
+    });
+    return detailMap;
+  } catch (error) {
+    return cloneDetailMap(defaultDetailMap);
+  }
+};
+
+const mergeRows = (summaries: TableSummary[], detailMap: Record<string, DatasetDetail>): TableRow[] =>
+  summaries.map(summary => ({
+    ...summary,
+    detail: cloneDetail(detailMap[summary.datasetName] ?? defaultDetailMap[summary.datasetName] ?? createEmptyDetail(summary.datasetName)),
+  }));
+
 const parseCommaSeparated = (value: string) =>
   value
     .split(",")
@@ -334,6 +569,8 @@ const parseLineSeparated = (value: string) =>
 export interface DataTableViewProps {
   title: string;
   subtitle: string;
+  tableJson?: string;
+  detailJson?: string;
 }
 
 const statusOptions: { value: StatusVariant | "all"; label: string }[] = [
@@ -354,20 +591,25 @@ const formatDate = (value: string) => {
   return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(date);
 };
 
-export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle }) => {
+export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle, tableJson, detailJson }) => {
+  const tableSource = tableJson ?? "";
+  const detailSource = detailJson ?? "";
+  const initialRowsRef = React.useRef<TableRow[]>([]);
+  if (initialRowsRef.current.length === 0) {
+    const initialSummaries = parseTableSummaries(tableSource);
+    const initialDetails = parseDetailEntries(detailSource);
+    initialRowsRef.current = mergeRows(initialSummaries, initialDetails);
+  }
+  const initialRows = initialRowsRef.current;
+
   const [rows, setRows] = React.useState<TableRow[]>(initialRows);
   const [statusFilter, setStatusFilter] = React.useState<StatusVariant | "all">("all");
   const [dgoFilter, setDgoFilter] = React.useState<string>("all");
-  const [deadlineMap, setDeadlineMap] = React.useState<Record<string, string>>(() => {
-    const initial: Record<string, string> = {};
-    initialRows.forEach(row => {
-      initial[row.datasetName] = row.deadline;
-    });
-    return initial;
-  });
+  const [deadlineMap, setDeadlineMap] = React.useState<Record<string, string>>(() => buildDeadlineMap(initialRows));
   const [selectedRow, setSelectedRow] = React.useState<TableRow | null>(null);
   const [editingRow, setEditingRow] = React.useState<TableRow | null>(null);
   const [isEditing, setIsEditing] = React.useState(false);
+  const datasetSourceRef = React.useRef({ table: tableSource, detail: detailSource });
   const closeDetail = React.useCallback(() => {
     setSelectedRow(null);
     setEditingRow(null);
@@ -380,6 +622,22 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle })
   }, []);
   const dgoFilterIdRef = React.useRef(`dgo-filter-${Math.random().toString(36).slice(2, 8)}`);
   const dgoFilterId = dgoFilterIdRef.current;
+
+  React.useEffect(() => {
+    if (datasetSourceRef.current.table === tableSource && datasetSourceRef.current.detail === detailSource) {
+      return;
+    }
+    datasetSourceRef.current = { table: tableSource, detail: detailSource };
+    const summaries = parseTableSummaries(tableSource);
+    const details = parseDetailEntries(detailSource);
+    const mergedRows = mergeRows(summaries, details);
+    initialRowsRef.current = mergedRows;
+    setRows(mergedRows);
+    setDeadlineMap(buildDeadlineMap(mergedRows));
+    setSelectedRow(null);
+    setEditingRow(null);
+    setIsEditing(false);
+  }, [tableSource, detailSource]);
 
   React.useEffect(() => {
     if (!selectedRow) {
