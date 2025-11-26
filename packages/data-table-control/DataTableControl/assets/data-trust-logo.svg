@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Data Trust Shield</title>
+  <desc id="desc">Stylised shield surrounding a listening head silhouette</desc>
+  <defs>
+    <linearGradient id="shield" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4F6BFF" />
+      <stop offset="100%" stop-color="#001EFF" />
+    </linearGradient>
+    <linearGradient id="lines" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#79A2FF" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#1E3AFF" stop-opacity="0.4" />
+    </linearGradient>
+  </defs>
+  <path fill="url(#shield)" d="M64 8c20 10 40 10 56 8v42c0 27-20 52-56 62-36-10-56-35-56-62V16c16 2 36 2 56-8z" />
+  <path fill="none" stroke="url(#lines)" stroke-width="2" stroke-linecap="round" d="M64 18v92M32 32l64 64M32 64h64M32 96l64-64" />
+  <g fill="none" stroke="#A8BEFF" stroke-width="4" stroke-linecap="round">
+    <path d="M80 56c0-9.941-8.059-18-18-18s-18 8.059-18 18" />
+    <path d="M44 84c0-11.046 8.954-20 20-20s20 8.954 20 20" />
+    <path d="M74 62c4.418 0 8 3.582 8 8" />
+  </g>
+  <circle cx="58" cy="56" r="10" fill="#D6E1FF" />
+  <path fill="#001EFF" d="M58 48a8 8 0 1 1 0 16c-1.6 0-2.88-.32-4.4-.8 1.44-1.92 2.32-4.32 2.32-6.8s-.88-4.88-2.32-6.8A11.7 11.7 0 0 1 58 48z" />
+  <circle cx="70" cy="64" r="4" fill="#79A2FF" />
+</svg>
