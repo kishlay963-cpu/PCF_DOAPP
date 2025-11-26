@@ -24,6 +24,8 @@ npm run build --workspace @pcf/progress-bar
 npm run start --workspace @pcf/progress-bar
 npm run build --workspace @pcf/fluent-form
 npm run start --workspace @pcf/fluent-form
+npm run build --workspace @pcf/data-table
+npm run start --workspace @pcf/data-table
 ```
 
 VS Code tasks (Terminal → Run Task…) include shortcuts for building the full workspace or individual controls.
@@ -33,6 +35,7 @@ VS Code tasks (Terminal → Run Task…) include shortcuts for building the full
 - `packages/react-control` (`@pcf/react-control`): React-based sample control that surfaces the bound `sampleProperty` via the Fluent UI label platform library.
 - `packages/progress-bar-control` (`@pcf/progress-bar`): Executive-style progress snapshot with Fluent UI cards, badges, and a goal-tracking progress bar.
 - `packages/form-control` (`@pcf/fluent-form`): Premium Fluent UI form layout for leadership updates with read-only fields and call-to-action buttons.
+- `packages/data-table-control` (`@pcf/data-table`): Modern Tailwind-styled governance table with responsive layout and LSEG blue accenting.
 
 To add another component, scaffold it with `pac pcf init ...`, place it under `packages/<new-control>`, and register it as an npm workspace.
 

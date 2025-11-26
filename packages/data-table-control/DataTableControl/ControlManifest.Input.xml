@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<manifest>
+  <control namespace="Contoso.PCF" constructor="DataTableControl" version="0.0.1" display-name-key="DataTableControl" description-key="DataTableControl description" control-type="virtual">
+    <external-service-usage enabled="false" />
+
+    <property name="portfolioTitle" display-name-key="PortfolioTitle_Display_Key" description-key="PortfolioTitle_Description_Key" of-type="SingleLine.Text" usage="input" required="false" />
+    <property name="portfolioSubtitle" display-name-key="PortfolioSubtitle_Display_Key" description-key="PortfolioSubtitle_Description_Key" of-type="SingleLine.Text" usage="input" required="false" />
+
+    <resources>
+      <code path="index.ts" order="1" />
+      <platform-library name="React" version="16.14.0" />
+      <css path="css/DataTableControl.css" order="1" />
+    </resources>
+  </control>
+</manifest>

@@ -20,7 +20,7 @@ task setup-solution:
 
 # Adds every PCF project in packages/ to the solution (idempotent).
 task sync-components:
-    for %%P in (packages\react-control,packages\progress-bar-control,packages\form-control) do (
+    for %%P in (packages\react-control,packages\progress-bar-control,packages\form-control,packages\data-table-control) do (
         pushd $(SOLUTION_DIR) && $(PAC) solution add-reference --path ..\%%P && popd
     )
 
