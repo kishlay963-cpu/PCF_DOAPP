@@ -56,7 +56,7 @@ interface TableRow {
   detail: DatasetDetail;
 }
 
-const rows: TableRow[] = [
+const initialRows: TableRow[] = [
   {
     datasetName: "Global Equity Trades",
     datasetSummary: "Daily executed orders captured across LSEG venues.",
@@ -302,6 +302,35 @@ const scoreOrder: (keyof DataObjectsAndMeasure)[] = [
 
 const toSlug = (value: string) => value.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase();
 
+const cloneDetail = (detail: DatasetDetail): DatasetDetail => ({
+  ...detail,
+  dataTypes: [...detail.dataTypes],
+  geography: [...detail.geography],
+  features: [...detail.features],
+  languages: [...detail.languages],
+  regions: [...detail.regions],
+  tags: [...detail.tags],
+  coverageMetric: { ...detail.coverageMetric },
+  dataObjectsAndMeasure: { ...detail.dataObjectsAndMeasure },
+});
+
+const cloneRow = (row: TableRow): TableRow => ({
+  ...row,
+  detail: cloneDetail(row.detail),
+});
+
+const parseCommaSeparated = (value: string) =>
+  value
+    .split(",")
+    .map(item => item.trim())
+    .filter(Boolean);
+
+const parseLineSeparated = (value: string) =>
+  value
+    .split(/\r?\n/)
+    .map(item => item.trim())
+    .filter(Boolean);
+
 export interface DataTableViewProps {
   title: string;
   subtitle: string;
@@ -326,19 +355,28 @@ const formatDate = (value: string) => {
 };
 
 export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle }) => {
+  const [rows, setRows] = React.useState<TableRow[]>(initialRows);
   const [statusFilter, setStatusFilter] = React.useState<StatusVariant | "all">("all");
   const [dgoFilter, setDgoFilter] = React.useState<string>("all");
   const [deadlineMap, setDeadlineMap] = React.useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
-    rows.forEach(row => {
+    initialRows.forEach(row => {
       initial[row.datasetName] = row.deadline;
     });
     return initial;
   });
   const [selectedRow, setSelectedRow] = React.useState<TableRow | null>(null);
-  const closeDetail = React.useCallback(() => setSelectedRow(null), []);
+  const [editingRow, setEditingRow] = React.useState<TableRow | null>(null);
+  const [isEditing, setIsEditing] = React.useState(false);
+  const closeDetail = React.useCallback(() => {
+    setSelectedRow(null);
+    setEditingRow(null);
+    setIsEditing(false);
+  }, []);
   const openDetail = React.useCallback((row: TableRow) => {
     setSelectedRow(row);
+    setEditingRow(cloneRow(row));
+    setIsEditing(false);
   }, []);
   const dgoFilterIdRef = React.useRef(`dgo-filter-${Math.random().toString(36).slice(2, 8)}`);
   const dgoFilterId = dgoFilterIdRef.current;
@@ -350,17 +388,22 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle })
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        closeDetail();
+        if (isEditing) {
+          setEditingRow(cloneRow(selectedRow));
+          setIsEditing(false);
+        } else {
+          closeDetail();
+        }
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [closeDetail, selectedRow]);
+  }, [closeDetail, isEditing, selectedRow]);
 
   const dgoOptions = React.useMemo(() => {
     const unique = Array.from(new Set(rows.map(row => row.dgo)));
     return ["all", ...unique];
-  }, []);
+  }, [rows]);
 
   const filteredRows = React.useMemo(() => {
     return rows.filter(row => {
@@ -368,7 +411,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle })
       const dgoMatches = dgoFilter === "all" || row.dgo === dgoFilter;
       return statusMatches && dgoMatches;
     });
-  }, [statusFilter, dgoFilter]);
+  }, [rows, statusFilter, dgoFilter]);
 
   const totals = React.useMemo(() => {
     const summary = {
@@ -378,7 +421,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle })
       blocked: rows.filter(row => row.status === "blocked").length,
     };
     return summary;
-  }, []);
+  }, [rows]);
 
   const filteredSummary = React.useMemo(() => {
     const summary = {
@@ -443,14 +486,119 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle })
       ...prev,
       [datasetName]: value,
     }));
+    setRows(prev =>
+      prev.map(row =>
+        row.datasetName === datasetName
+          ? {
+              ...row,
+              deadline: value,
+            }
+          : row,
+      ),
+    );
   }, []);
+
+  const updateEditingRowField = <K extends keyof TableRow>(key: K, value: TableRow[K]) => {
+    setEditingRow(prev => (prev ? { ...prev, [key]: value } : prev));
+  };
+
+  const updateEditingDetailField = <K extends keyof DatasetDetail>(key: K, value: DatasetDetail[K]) => {
+    setEditingRow(prev =>
+      prev
+        ? {
+            ...prev,
+            detail: {
+              ...prev.detail,
+              [key]: value,
+            },
+          }
+        : prev,
+    );
+  };
+
+  const updateCoverageMetricField = <K extends keyof CoverageMetric>(key: K, value: CoverageMetric[K]) => {
+    setEditingRow(prev =>
+      prev
+        ? {
+            ...prev,
+            detail: {
+              ...prev.detail,
+              coverageMetric: {
+                ...prev.detail.coverageMetric,
+                [key]: value,
+              },
+            },
+          }
+        : prev,
+    );
+  };
+
+  const updateScoreField = <K extends keyof DataObjectsAndMeasure>(key: K, value: DataObjectsAndMeasure[K]) => {
+    setEditingRow(prev =>
+      prev
+        ? {
+            ...prev,
+            detail: {
+              ...prev.detail,
+              dataObjectsAndMeasure: {
+                ...prev.detail.dataObjectsAndMeasure,
+                [key]: value,
+              },
+            },
+          }
+        : prev,
+    );
+  };
+
+  const startEdit = React.useCallback(() => {
+    if (!selectedRow) {
+      return;
+    }
+    setEditingRow(cloneRow(selectedRow));
+    setIsEditing(true);
+  }, [selectedRow]);
+
+  const cancelEdit = React.useCallback(() => {
+    if (!selectedRow) {
+      setEditingRow(null);
+      setIsEditing(false);
+      return;
+    }
+    setEditingRow(cloneRow(selectedRow));
+    setIsEditing(false);
+  }, [selectedRow]);
+
+  const saveEdit = React.useCallback(() => {
+    if (!selectedRow || !editingRow) {
+      return;
+    }
+    const previousName = selectedRow.datasetName;
+    const updatedRow = cloneRow(editingRow);
+
+    setRows(prev =>
+      prev.map(row => (row.datasetName === previousName ? cloneRow(updatedRow) : row)),
+    );
+
+    setDeadlineMap(prev => {
+      const next = { ...prev };
+      const nextDeadline = updatedRow.deadline ?? "";
+      delete next[previousName];
+      next[updatedRow.datasetName] = nextDeadline;
+      return next;
+    });
+
+    setSelectedRow(cloneRow(updatedRow));
+    setEditingRow(cloneRow(updatedRow));
+    setIsEditing(false);
+  }, [editingRow, selectedRow]);
 
   const headerLabel = subtitle || "Data governance portfolio";
   const heading = title || "Strategic datasets readiness";
   const filterBarLabel = `${headerLabel}: ${heading} filters`;
   const filterMetricLabel = `${filteredSummary.total} of ${totals.total} datasets currently in view`;
 
-  const detailTitleId = selectedRow ? `dataset-detail-${toSlug(selectedRow.datasetName)}` : undefined;
+  const detailRow = isEditing && editingRow ? editingRow : selectedRow;
+  const detailTitleId = detailRow ? `dataset-detail-${toSlug(detailRow.datasetName)}` : undefined;
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -628,34 +776,105 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle })
           </footer>
       </section>
 
-      {selectedRow ? (
+      {detailRow ? (
         <div
           className="dt-detail-overlay"
           role="dialog"
           aria-modal="true"
           aria-labelledby={detailTitleId}
-          onClick={closeDetail}
+          onClick={() => {
+            if (!isEditing) {
+              closeDetail();
+            }
+          }}
         >
           <article className="dt-detail-panel" onClick={event => event.stopPropagation()}>
             <header className="dt-detail-header">
-              <div>
-                <p className="dt-detail-subtitle">{selectedRow.detail.businessUnit}</p>
+              <div className="dt-detail-header-main">
+                {isEditing ? (
+                  <input
+                    className="dt-input dt-input--caps"
+                    value={detailRow.detail.businessUnit}
+                    onChange={event => updateEditingDetailField("businessUnit", event.target.value)}
+                    placeholder="Business unit"
+                  />
+                ) : (
+                  <p className="dt-detail-subtitle">{detailRow.detail.businessUnit}</p>
+                )}
                 {detailTitleId ? (
                   <h2 className="dt-detail-title" id={detailTitleId}>
-                    {selectedRow.datasetName}
+                    {isEditing ? (
+                      <input
+                        className="dt-input dt-input--heading"
+                        value={detailRow.datasetName}
+                        onChange={event => updateEditingRowField("datasetName", event.target.value)}
+                        placeholder="Dataset name"
+                      />
+                    ) : (
+                      detailRow.datasetName
+                    )}
                   </h2>
                 ) : (
-                  <h2 className="dt-detail-title">{selectedRow.datasetName}</h2>
+                  <h2 className="dt-detail-title">
+                    {isEditing ? (
+                      <input
+                        className="dt-input dt-input--heading"
+                        value={detailRow.datasetName}
+                        onChange={event => updateEditingRowField("datasetName", event.target.value)}
+                        placeholder="Dataset name"
+                      />
+                    ) : (
+                      detailRow.datasetName
+                    )}
+                  </h2>
                 )}
-                <p className="dt-detail-summary">{selectedRow.datasetSummary}</p>
+                {isEditing ? (
+                  <textarea
+                    className="dt-textarea"
+                    value={detailRow.datasetSummary}
+                    onChange={event => updateEditingRowField("datasetSummary", event.target.value)}
+                    placeholder="High-level summary"
+                  />
+                ) : (
+                  <p className="dt-detail-summary">{detailRow.datasetSummary}</p>
+                )}
               </div>
               <div className="dt-detail-header-actions">
-                <span className="dt-status" data-variant={selectedRow.status}>
-                  {statusCopy[selectedRow.status].label}
-                </span>
-                <button type="button" className="dt-detail-close" onClick={closeDetail}>
-                  Close
-                </button>
+                {isEditing ? (
+                  <>
+                    <select
+                      className="dt-select"
+                      value={detailRow.status}
+                      onChange={event => updateEditingRowField("status", event.target.value as StatusVariant)}
+                    >
+                      {statusOptions
+                        .filter(option => option.value !== "all")
+                        .map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                    </select>
+                    <button type="button" className="dt-detail-action" onClick={cancelEdit}>
+                      Cancel
+                    </button>
+                    <button type="button" className="dt-detail-action dt-detail-action--primary" onClick={saveEdit}>
+                      Save changes
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="dt-status" data-variant={detailRow.status}>
+                      {statusCopy[detailRow.status].label}
+                    </span>
+                    <button type="button" className="dt-detail-action" onClick={startEdit}>
+                      Edit details
+                    </button>
+                    <button type="button" className="dt-detail-action" onClick={closeDetail}>
+                      Close
+                    </button>
+                  </>
+                )}
               </div>
             </header>
 
@@ -663,51 +882,234 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle })
               <div className="dt-detail-metrics">
                 <div className="dt-detail-metric">
                   <p className="dt-detail-metric-label">Coverage count</p>
-                  <p className="dt-detail-metric-value">{selectedRow.detail.coverageCount.toLocaleString()}</p>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      className="dt-input dt-input--metric"
+                      value={detailRow.detail.coverageCount}
+                      onChange={event => updateEditingDetailField("coverageCount", Number(event.target.value) || 0)}
+                      min={0}
+                    />
+                  ) : (
+                    <p className="dt-detail-metric-value">{detailRow.detail.coverageCount.toLocaleString()}</p>
+                  )}
                 </div>
                 <div className="dt-detail-metric">
                   <p className="dt-detail-metric-label">Data frequency</p>
-                  <p className="dt-detail-metric-value">{selectedRow.detail.dataFrequency}</p>
+                  {isEditing ? (
+                    <input
+                      className="dt-input dt-input--metric"
+                      value={detailRow.detail.dataFrequency}
+                      onChange={event => updateEditingDetailField("dataFrequency", event.target.value)}
+                    />
+                  ) : (
+                    <p className="dt-detail-metric-value">{detailRow.detail.dataFrequency}</p>
+                  )}
                 </div>
                 <div className="dt-detail-metric">
                   <p className="dt-detail-metric-label">Time period</p>
-                  <p className="dt-detail-metric-value">{selectedRow.detail.timePeriod}</p>
+                  {isEditing ? (
+                    <input
+                      className="dt-input dt-input--metric"
+                      value={detailRow.detail.timePeriod}
+                      onChange={event => updateEditingDetailField("timePeriod", event.target.value)}
+                    />
+                  ) : (
+                    <p className="dt-detail-metric-value">{detailRow.detail.timePeriod}</p>
+                  )}
                 </div>
                 <div className="dt-detail-metric">
                   <p className="dt-detail-metric-label">Minimum frequency</p>
-                  <p className="dt-detail-metric-value">{selectedRow.detail.minimumDataFrequency}</p>
+                  {isEditing ? (
+                    <input
+                      className="dt-input dt-input--metric"
+                      value={detailRow.detail.minimumDataFrequency}
+                      onChange={event => updateEditingDetailField("minimumDataFrequency", event.target.value)}
+                    />
+                  ) : (
+                    <p className="dt-detail-metric-value">{detailRow.detail.minimumDataFrequency}</p>
+                  )}
                 </div>
               </div>
 
               <div className="dt-detail-grid">
                 <article className="dt-detail-card lg:col-span-7">
                   <h3 className="dt-detail-card-title">Overview</h3>
-                  <p className="dt-detail-body">{selectedRow.detail.description}</p>
+                  {isEditing ? (
+                    <textarea
+                      className="dt-textarea"
+                      value={detailRow.detail.description}
+                      onChange={event => updateEditingDetailField("description", event.target.value)}
+                      placeholder="Narrative overview"
+                    />
+                  ) : (
+                    <p className="dt-detail-body">{detailRow.detail.description}</p>
+                  )}
                   <dl className="dt-detail-properties">
                     <div>
                       <dt>Domain</dt>
-                      <dd>{selectedRow.detail.domain}</dd>
+                      <dd>
+                        {isEditing ? (
+                          <input
+                            className="dt-input"
+                            value={detailRow.detail.domain}
+                            onChange={event => updateEditingDetailField("domain", event.target.value)}
+                          />
+                        ) : (
+                          detailRow.detail.domain
+                        )}
+                      </dd>
                     </div>
                     <div>
                       <dt>Subdomain</dt>
-                      <dd>{selectedRow.detail.subdomain}</dd>
+                      <dd>
+                        {isEditing ? (
+                          <input
+                            className="dt-input"
+                            value={detailRow.detail.subdomain}
+                            onChange={event => updateEditingDetailField("subdomain", event.target.value)}
+                          />
+                        ) : (
+                          detailRow.detail.subdomain
+                        )}
+                      </dd>
                     </div>
                     <div>
                       <dt>Business unit</dt>
-                      <dd>{selectedRow.detail.businessUnit}</dd>
+                      <dd>
+                        {isEditing ? (
+                          <input
+                            className="dt-input"
+                            value={detailRow.detail.businessUnit}
+                            onChange={event => updateEditingDetailField("businessUnit", event.target.value)}
+                          />
+                        ) : (
+                          detailRow.detail.businessUnit
+                        )}
+                      </dd>
                     </div>
                     <div>
                       <dt>History</dt>
-                      <dd>{selectedRow.detail.history}</dd>
+                      <dd>
+                        {isEditing ? (
+                          <textarea
+                            className="dt-textarea dt-textarea--compact"
+                            value={detailRow.detail.history}
+                            onChange={event => updateEditingDetailField("history", event.target.value)}
+                          />
+                        ) : (
+                          detailRow.detail.history
+                        )}
+                      </dd>
                     </div>
                   </dl>
-                  <div className="dt-detail-chip-group">
-                    {selectedRow.detail.dataTypes.map(type => (
-                      <span key={type} className="dt-detail-chip">
-                        {type}
-                      </span>
-                    ))}
-                  </div>
+                  {isEditing ? (
+                    <textarea
+                      className="dt-textarea"
+                      value={detailRow.detail.dataTypes.join("\n")}
+                      onChange={event => updateEditingDetailField("dataTypes", parseLineSeparated(event.target.value))}
+                      placeholder="List each data type on a new line"
+                    />
+                  ) : (
+                    <div className="dt-detail-chip-group">
+                      {detailRow.detail.dataTypes.map(type => (
+                        <span key={type} className="dt-detail-chip">
+                          {type}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </article>
+
+                <article className="dt-detail-card lg:col-span-5">
+                  <h3 className="dt-detail-card-title">Stewardship &amp; readiness</h3>
+                  <dl className="dt-detail-properties dt-detail-properties--stacked">
+                    <div>
+                      <dt>Data owner</dt>
+                      <dd>
+                        {isEditing ? (
+                          <input
+                            className="dt-input"
+                            value={detailRow.dataOwner}
+                            onChange={event => updateEditingRowField("dataOwner", event.target.value)}
+                          />
+                        ) : (
+                          detailRow.dataOwner
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Owner role</dt>
+                      <dd>
+                        {isEditing ? (
+                          <input
+                            className="dt-input"
+                            value={detailRow.dataOwnerRole}
+                            onChange={event => updateEditingRowField("dataOwnerRole", event.target.value)}
+                          />
+                        ) : (
+                          detailRow.dataOwnerRole
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Data governance office</dt>
+                      <dd>
+                        {isEditing ? (
+                          <input
+                            className="dt-input"
+                            value={detailRow.dgo}
+                            onChange={event => updateEditingRowField("dgo", event.target.value)}
+                          />
+                        ) : (
+                          detailRow.dgo
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>DO SPOC</dt>
+                      <dd>
+                        {isEditing ? (
+                          <input
+                            className="dt-input"
+                            value={detailRow.doSpoc}
+                            onChange={event => updateEditingRowField("doSpoc", event.target.value)}
+                          />
+                        ) : (
+                          detailRow.doSpoc
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Readiness notes</dt>
+                      <dd>
+                        {isEditing ? (
+                          <textarea
+                            className="dt-textarea dt-textarea--compact"
+                            value={detailRow.descriptionValidation}
+                            onChange={event => updateEditingRowField("descriptionValidation", event.target.value)}
+                          />
+                        ) : (
+                          detailRow.descriptionValidation
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Target deadline</dt>
+                      <dd>
+                        {isEditing ? (
+                          <input
+                            type="date"
+                            className="dt-input"
+                            value={detailRow.deadline ?? ""}
+                            onChange={event => updateEditingRowField("deadline", event.target.value)}
+                          />
+                        ) : (
+                          formatDate(detailRow.deadline)
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
                 </article>
 
                 <article className="dt-detail-card lg:col-span-5">
@@ -715,23 +1117,75 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle })
                   <dl className="dt-detail-properties dt-detail-properties--stacked">
                     <div>
                       <dt>Coverage count</dt>
-                      <dd>{selectedRow.detail.coverageMetric.coverageCount.toLocaleString()}</dd>
+                      <dd>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            className="dt-input"
+                            value={detailRow.detail.coverageMetric.coverageCount}
+                            onChange={event => updateCoverageMetricField("coverageCount", Number(event.target.value) || 0)}
+                            min={0}
+                          />
+                        ) : (
+                          detailRow.detail.coverageMetric.coverageCount.toLocaleString()
+                        )}
+                      </dd>
                     </div>
                     <div>
                       <dt>Data frequency</dt>
-                      <dd>{selectedRow.detail.coverageMetric.dataFrequency}</dd>
+                      <dd>
+                        {isEditing ? (
+                          <input
+                            className="dt-input"
+                            value={detailRow.detail.coverageMetric.dataFrequency}
+                            onChange={event => updateCoverageMetricField("dataFrequency", event.target.value)}
+                          />
+                        ) : (
+                          detailRow.detail.coverageMetric.dataFrequency
+                        )}
+                      </dd>
                     </div>
                     <div>
                       <dt>Data types</dt>
-                      <dd>{selectedRow.detail.coverageMetric.dataTypes}</dd>
+                      <dd>
+                        {isEditing ? (
+                          <input
+                            className="dt-input"
+                            value={detailRow.detail.coverageMetric.dataTypes}
+                            onChange={event => updateCoverageMetricField("dataTypes", event.target.value)}
+                          />
+                        ) : (
+                          detailRow.detail.coverageMetric.dataTypes
+                        )}
+                      </dd>
                     </div>
                     <div>
                       <dt>Geography</dt>
-                      <dd>{selectedRow.detail.coverageMetric.geography}</dd>
+                      <dd>
+                        {isEditing ? (
+                          <input
+                            className="dt-input"
+                            value={detailRow.detail.coverageMetric.geography}
+                            onChange={event => updateCoverageMetricField("geography", event.target.value)}
+                          />
+                        ) : (
+                          detailRow.detail.coverageMetric.geography
+                        )}
+                      </dd>
                     </div>
                     <div>
                       <dt>History</dt>
-                      <dd>{selectedRow.detail.coverageMetric.history}</dd>
+                      <dd>
+                        {isEditing ? (
+                          <input
+                            className="dt-input"
+                            value={detailRow.detail.coverageMetric.history}
+                            onChange={event => updateCoverageMetricField("history", event.target.value)}
+                          />
+                        ) : (
+                          detailRow.detail.coverageMetric.history
+                        )}
+                      </dd>
                     </div>
                   </dl>
                 </article>
@@ -742,7 +1196,18 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle })
                     {scoreOrder.map(key => (
                       <div className="dt-detail-score" key={key}>
                         <p className="dt-detail-score-label">{scoreLabels[key]}</p>
-                        <p className="dt-detail-score-value">{selectedRow.detail.dataObjectsAndMeasure[key]}</p>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            className="dt-input dt-input--score"
+                            value={detailRow.detail.dataObjectsAndMeasure[key]}
+                            onChange={event => updateScoreField(key, Number(event.target.value) || 0)}
+                            min={0}
+                            max={100}
+                          />
+                        ) : (
+                          <p className="dt-detail-score-value">{detailRow.detail.dataObjectsAndMeasure[key]}</p>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -750,11 +1215,20 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle })
 
                 <article className="dt-detail-card lg:col-span-5">
                   <h3 className="dt-detail-card-title">Features &amp; benefits</h3>
-                  <ul className="dt-detail-list">
-                    {selectedRow.detail.features.map(item => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
+                  {isEditing ? (
+                    <textarea
+                      className="dt-textarea"
+                      value={detailRow.detail.features.join("\n")}
+                      onChange={event => updateEditingDetailField("features", parseLineSeparated(event.target.value))}
+                      placeholder="List each benefit on a new line"
+                    />
+                  ) : (
+                    <ul className="dt-detail-list">
+                      {detailRow.detail.features.map(item => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  )}
                 </article>
 
                 <article className="dt-detail-card lg:col-span-6">
@@ -762,43 +1236,75 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle })
                   <div className="dt-detail-distribution">
                     <div>
                       <p className="dt-detail-micro-label">Regions</p>
-                      <div className="dt-detail-chip-group">
-                        {selectedRow.detail.regions.map(region => (
-                          <span key={region} className="dt-detail-chip">
-                            {region}
-                          </span>
-                        ))}
-                      </div>
+                      {isEditing ? (
+                        <input
+                          className="dt-input"
+                          value={detailRow.detail.regions.join(", ")}
+                          onChange={event => updateEditingDetailField("regions", parseCommaSeparated(event.target.value))}
+                        />
+                      ) : (
+                        <div className="dt-detail-chip-group">
+                          {detailRow.detail.regions.map(region => (
+                            <span key={region} className="dt-detail-chip">
+                              {region}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <p className="dt-detail-micro-label">Geography coverage</p>
-                      <div className="dt-detail-chip-group">
-                        {selectedRow.detail.geography.map(item => (
-                          <span key={item} className="dt-detail-chip">
-                            {item}
-                          </span>
-                        ))}
-                      </div>
+                      {isEditing ? (
+                        <input
+                          className="dt-input"
+                          value={detailRow.detail.geography.join(", ")}
+                          onChange={event => updateEditingDetailField("geography", parseCommaSeparated(event.target.value))}
+                        />
+                      ) : (
+                        <div className="dt-detail-chip-group">
+                          {detailRow.detail.geography.map(item => (
+                            <span key={item} className="dt-detail-chip">
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <p className="dt-detail-micro-label">Languages</p>
-                      <div className="dt-detail-chip-group">
-                        {selectedRow.detail.languages.map(language => (
-                          <span key={language} className="dt-detail-chip">
-                            {language}
-                          </span>
-                        ))}
-                      </div>
+                      {isEditing ? (
+                        <input
+                          className="dt-input"
+                          value={detailRow.detail.languages.join(", ")}
+                          onChange={event => updateEditingDetailField("languages", parseCommaSeparated(event.target.value))}
+                        />
+                      ) : (
+                        <div className="dt-detail-chip-group">
+                          {detailRow.detail.languages.map(language => (
+                            <span key={language} className="dt-detail-chip">
+                              {language}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <p className="dt-detail-micro-label">Tags</p>
-                      <div className="dt-detail-chip-group">
-                        {selectedRow.detail.tags.map(tag => (
-                          <span key={tag} className="dt-detail-chip">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
+                      {isEditing ? (
+                        <input
+                          className="dt-input"
+                          value={detailRow.detail.tags.join(", ")}
+                          onChange={event => updateEditingDetailField("tags", parseCommaSeparated(event.target.value))}
+                        />
+                      ) : (
+                        <div className="dt-detail-chip-group">
+                          {detailRow.detail.tags.map(tag => (
+                            <span key={tag} className="dt-detail-chip">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </article>
@@ -809,14 +1315,32 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ title, subtitle })
                     <div>
                       <dt>Marketing site</dt>
                       <dd>
-                        <a className="dt-detail-link" href={selectedRow.detail.marketingUrl} target="_blank" rel="noreferrer">
-                          {selectedRow.detail.marketingUrl}
-                        </a>
+                        {isEditing ? (
+                          <input
+                            className="dt-input"
+                            value={detailRow.detail.marketingUrl}
+                            onChange={event => updateEditingDetailField("marketingUrl", event.target.value)}
+                          />
+                        ) : (
+                          <a className="dt-detail-link" href={detailRow.detail.marketingUrl} target="_blank" rel="noreferrer">
+                            {detailRow.detail.marketingUrl}
+                          </a>
+                        )}
                       </dd>
                     </div>
                     <div>
                       <dt>Minimum cadence</dt>
-                      <dd>{selectedRow.detail.minimumDataFrequency}</dd>
+                      <dd>
+                        {isEditing ? (
+                          <input
+                            className="dt-input"
+                            value={detailRow.detail.minimumDataFrequency}
+                            onChange={event => updateEditingDetailField("minimumDataFrequency", event.target.value)}
+                          />
+                        ) : (
+                          detailRow.detail.minimumDataFrequency
+                        )}
+                      </dd>
                     </div>
                   </dl>
                 </article>
