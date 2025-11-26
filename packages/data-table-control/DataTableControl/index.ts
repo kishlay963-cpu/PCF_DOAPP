@@ -1,5 +1,6 @@
 import { IInputs, IOutputs } from "./generated/ManifestTypes";
-import { DataTableView, defaultDetailData, defaultTableData } from "./DataTableView";
+import { DataTableView } from "./DataTableView";
+import { defaultDetailData, defaultTableData } from "./data";
 import * as React from "react";
 
 const defaultTableJson = JSON.stringify(defaultTableData);

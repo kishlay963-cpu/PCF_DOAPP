@@ -2457,16 +2457,16 @@ video {
   }
 }
 
+.visible {
+  visibility: visible;
+}
+
 .mt-2 {
   margin-top: 0.5rem;
 }
 
 .flex {
   display: flex;
-}
-
-.table {
-  display: table;
 }
 
 .w-full {
