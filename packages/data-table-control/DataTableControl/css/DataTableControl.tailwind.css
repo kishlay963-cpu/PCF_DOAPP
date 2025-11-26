@@ -118,6 +118,102 @@
     @apply inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-500 transition hover:border-brand-200 hover:bg-brand-50/70 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
+  .dt-filter-search {
+    @apply relative flex items-center gap-3;
+  }
+
+  .dt-filter-search-toggle {
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-brand-200 hover:text-brand-600;
+  }
+
+  .dt-filter-search[data-open="true"] .dt-filter-search-toggle {
+    @apply border-brand-300 bg-brand-50 text-brand-600 shadow-sm;
+  }
+
+  .dt-filter-search-toggle-icon {
+    @apply h-5 w-5;
+  }
+
+  .dt-filter-search-field {
+    @apply flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm shadow-sm;
+  }
+
+  .dt-filter-search-input {
+    @apply w-56 border-none bg-transparent font-medium text-slate-700 outline-none placeholder:text-slate-400/70;
+  }
+
+  .dt-filter-search-clear {
+    @apply inline-flex items-center rounded-full border border-transparent px-2 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 transition hover:text-brand-500;
+  }
+
+  .dt-filter-search-suggestions {
+    @apply absolute right-0 top-[calc(100%+0.75rem)] z-30 w-80 list-none overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl;
+  }
+
+  .dt-filter-search-option {
+    @apply flex w-full items-center gap-3 border-none bg-transparent px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-brand-50/80 hover:text-brand-600;
+  }
+
+  .dt-filter-search-option-copy {
+    @apply flex flex-col items-start gap-1;
+  }
+
+  .dt-filter-search-option-text {
+    @apply text-sm font-semibold text-slate-900;
+  }
+
+  .dt-filter-search-context {
+    @apply text-xs font-medium uppercase tracking-[0.18em] text-slate-400;
+  }
+
+  .dt-filter-search-icon {
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-lg border text-[0.7rem] font-semibold uppercase tracking-[0.18em];
+  }
+
+  .dt-filter-search-icon--dataset {
+    @apply border-brand-200 bg-brand-50 text-brand-600;
+  }
+
+  .dt-filter-search-icon--domain {
+    @apply border-emerald-200 bg-emerald-50 text-emerald-600;
+  }
+
+  .dt-filter-search-icon--subdomain {
+    @apply border-amber-200 bg-amber-50 text-amber-600;
+  }
+
+  .dt-filter-search-icon--owner {
+    @apply border-slate-200 bg-slate-100 text-slate-600;
+  }
+
+  .dt-filter-search-icon--dgo {
+    @apply border-indigo-200 bg-indigo-50 text-indigo-600;
+  }
+
+  .dt-filter-search-icon--spoc {
+    @apply border-rose-200 bg-rose-50 text-rose-600;
+  }
+
+  .dt-filter-search-icon--query {
+    @apply border-slate-200 bg-white text-slate-500;
+  }
+
+  .dt-filter-search-empty {
+    @apply absolute right-0 top-[calc(100%+0.75rem)] z-30 w-80 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-500 shadow-2xl;
+  }
+
+  .dt-filter-search-pill {
+    @apply inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-brand-600;
+  }
+
+  .dt-filter-search-pill-text {
+    @apply max-w-[12rem] truncate text-sm font-semibold text-brand-700;
+  }
+
+  .dt-filter-search-pill-clear {
+    @apply inline-flex h-6 w-6 items-center justify-center rounded-full border border-transparent text-base text-brand-500 transition hover:text-brand-600;
+  }
+
   .dt-table {
     @apply flex-1 overflow-hidden w-full;
   }

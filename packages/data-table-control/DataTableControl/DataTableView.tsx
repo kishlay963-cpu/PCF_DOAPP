@@ -106,6 +106,14 @@ interface ChangeVersion {
   row: TableRow;
 }
 
+type SearchType = "dataset" | "domain" | "subdomain" | "owner" | "dgo" | "spoc";
+
+interface SearchEntry {
+  type: SearchType;
+  value: string;
+  searchValue: string;
+}
+
 export const defaultRows: TableRow[] = [
   {
     datasetName: "Global Equity Trades",
@@ -377,6 +385,68 @@ const normaliseStatus = (value: unknown, fallback?: StatusVariant): StatusVarian
     return fallback;
   }
   return "on-track";
+};
+
+const searchTypeOrder: SearchType[] = ["dataset", "domain", "subdomain", "owner", "dgo", "spoc"];
+
+const searchTypeConfig: Record<SearchType, { label: string; shortLabel: string }> = {
+  dataset: { label: "Dataset name", shortLabel: "DS" },
+  domain: { label: "Domain", shortLabel: "DM" },
+  subdomain: { label: "Subdomain", shortLabel: "SD" },
+  owner: { label: "Data owner", shortLabel: "OW" },
+  dgo: { label: "DGO", shortLabel: "GO" },
+  spoc: { label: "SPOC", shortLabel: "SP" },
+};
+
+const normaliseText = (value: string | undefined | null) => (value ?? "").trim().toLowerCase();
+
+const buildSearchIndex = (rows: TableRow[]): SearchEntry[] => {
+  const buckets: Record<SearchType, Map<string, string>> = {
+    dataset: new Map<string, string>(),
+    domain: new Map<string, string>(),
+    subdomain: new Map<string, string>(),
+    owner: new Map<string, string>(),
+    dgo: new Map<string, string>(),
+    spoc: new Map<string, string>(),
+  };
+
+  const register = (type: SearchType, rawValue: string | undefined | null) => {
+    const candidate = (rawValue ?? "").trim();
+    if (!candidate) {
+      return;
+    }
+    const key = candidate.toLowerCase();
+    if (!buckets[type].has(key)) {
+      buckets[type].set(key, candidate);
+    }
+  };
+
+  rows.forEach(row => {
+    register("dataset", row.datasetName);
+    register("domain", row.detail.domain);
+    register("subdomain", row.detail.subdomain);
+    register("owner", row.dataOwner);
+    register("dgo", row.dgo);
+    register("spoc", row.doSpoc);
+  });
+
+  const entries: SearchEntry[] = [];
+  searchTypeOrder.forEach(type => {
+    buckets[type].forEach((value, key) => {
+      entries.push({
+        type,
+        value,
+        searchValue: key,
+      });
+    });
+  });
+
+  return entries.sort((a, b) => {
+    if (a.type === b.type) {
+      return a.value.localeCompare(b.value);
+    }
+    return searchTypeOrder.indexOf(a.type) - searchTypeOrder.indexOf(b.type);
+  });
 };
 
 export const defaultTableData: TableSummary[] = defaultRows.map(({ detail, ...summary }): TableSummary => ({
@@ -839,6 +909,13 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
   const changeHistorySourceRef = React.useRef(changeRequestJson ?? "");
 
   const [rows, setRows] = React.useState<TableRow[]>(initialRows);
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const [searchInput, setSearchInput] = React.useState("");
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [activeSearchFilter, setActiveSearchFilter] = React.useState<SearchEntry | null>(null);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+  const searchContainerRef = React.useRef<HTMLDivElement>(null);
+  const searchListIdRef = React.useRef(`dt-search-${Math.random().toString(36).slice(2, 8)}`);
   const [statusFilter, setStatusFilter] = React.useState<StatusVariant | "all">("all");
   const [dgoFilter, setDgoFilter] = React.useState<string>("all");
   const [deadlineMap, setDeadlineMap] = React.useState<Record<string, string>>(() => buildDeadlineMap(initialRows));
@@ -849,6 +926,175 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
   const [selectedDatasetName, setSelectedDatasetName] = React.useState<string | null>(null);
   const [activeVersionMap, setActiveVersionMap] = React.useState<Record<string, number>>({});
   const activeVersionIndex = selectedDatasetName ? activeVersionMap[selectedDatasetName] ?? 0 : 0;
+
+  const searchIndex = React.useMemo(() => buildSearchIndex(rows), [rows]);
+
+  const suggestions = React.useMemo(() => {
+    if (!searchOpen) {
+      return [];
+    }
+    const query = searchInput.trim().toLowerCase();
+    const base = query ? searchIndex.filter(entry => entry.searchValue.includes(query)) : searchIndex;
+    const filtered = activeSearchFilter
+      ? base.filter(entry => !(entry.type === activeSearchFilter.type && entry.searchValue === activeSearchFilter.searchValue))
+      : base;
+    return filtered.slice(0, 8);
+  }, [activeSearchFilter, searchIndex, searchInput, searchOpen]);
+
+  React.useEffect(() => {
+    if (!searchOpen) {
+      return;
+    }
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+      searchInputRef.current.select();
+    }
+  }, [searchOpen]);
+
+  React.useEffect(() => {
+    if (!searchOpen) {
+      return;
+    }
+    const handleClick = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [searchOpen]);
+
+  const resetSearchInput = React.useCallback(() => {
+    setSearchInput("");
+    setSearchQuery("");
+    setActiveSearchFilter(null);
+  }, []);
+
+  const clearSearch = React.useCallback(() => {
+    resetSearchInput();
+    setSearchOpen(false);
+  }, [resetSearchInput]);
+
+  const applySearchQuery = React.useCallback((raw: string) => {
+    const next = raw.trim();
+    setActiveSearchFilter(null);
+    setSearchQuery(next);
+    setSearchInput(next);
+  }, []);
+
+  const handleSearchToggle = React.useCallback(() => {
+    if (searchOpen) {
+      setSearchOpen(false);
+      return;
+    }
+    const seed = activeSearchFilter ? activeSearchFilter.value : searchQuery;
+    setSearchInput(seed);
+    setSearchOpen(true);
+  }, [activeSearchFilter, searchOpen, searchQuery]);
+
+  const handleSearchInputChange = React.useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const nextValue = event.target.value;
+      setSearchInput(nextValue);
+      if (activeSearchFilter) {
+        setActiveSearchFilter(null);
+      }
+      setSearchQuery(nextValue);
+    },
+    [activeSearchFilter],
+  );
+
+  const handleSearchKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (activeSearchFilter) {
+          setSearchOpen(false);
+        } else {
+          applySearchQuery(searchInput);
+          setSearchOpen(false);
+        }
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (searchInput.trim()) {
+          resetSearchInput();
+        } else {
+          setSearchOpen(false);
+        }
+      }
+    },
+    [activeSearchFilter, applySearchQuery, resetSearchInput, searchInput],
+  );
+
+  const handleSuggestionSelect = React.useCallback((entry: SearchEntry) => {
+    setActiveSearchFilter(entry);
+    setSearchQuery(entry.value);
+    setSearchInput(entry.value);
+    setSearchOpen(false);
+  }, []);
+
+  const rowMatchesSearch = React.useCallback(
+    (row: TableRow) => {
+      if (activeSearchFilter) {
+        const target = activeSearchFilter.searchValue;
+        switch (activeSearchFilter.type) {
+          case "dataset":
+            return normaliseText(row.datasetName) === target;
+          case "domain":
+            return normaliseText(row.detail.domain) === target;
+          case "subdomain":
+            return normaliseText(row.detail.subdomain) === target;
+          case "owner":
+            return normaliseText(row.dataOwner) === target;
+          case "dgo":
+            return normaliseText(row.dgo) === target;
+          case "spoc":
+            return normaliseText(row.doSpoc) === target;
+          default:
+            return true;
+        }
+      }
+      const query = searchQuery.trim().toLowerCase();
+      if (!query) {
+        return true;
+      }
+      const primaryFields = [
+        row.datasetName,
+        row.datasetSummary,
+        row.detail.domain,
+        row.detail.subdomain,
+        row.dataOwner,
+        row.dataOwnerRole,
+        row.dgo,
+        row.doSpoc,
+        row.descriptionValidation,
+      ];
+      if (primaryFields.some(value => normaliseText(value).includes(query))) {
+        return true;
+      }
+      const listFields: string[][] = [
+        row.detail.tags,
+        row.detail.features,
+        row.detail.languages,
+        row.detail.regions,
+        row.detail.dataTypes,
+      ];
+      return listFields.some(list => list.some(item => normaliseText(item).includes(query)));
+    },
+    [activeSearchFilter, searchQuery],
+  );
+
+  const hasSearch = React.useMemo(() => activeSearchFilter !== null || searchQuery.trim().length > 0, [activeSearchFilter, searchQuery]);
+
+  const searchPillValue = activeSearchFilter ? activeSearchFilter.value : searchQuery.trim();
+  const searchPillType: SearchType | "query" = activeSearchFilter ? activeSearchFilter.type : "query";
+  const searchPillBadge = activeSearchFilter ? searchTypeConfig[activeSearchFilter.type].shortLabel : "TXT";
+  const searchPillLabel = activeSearchFilter ? searchTypeConfig[activeSearchFilter.type].label : "Text search";
+  const showSearchPill = searchPillValue.length > 0;
+  const searchToggleLabel = searchOpen ? "Collapse search" : "Expand search";
+  const searchListId = searchListIdRef.current;
+  const showEmptySuggestions = searchOpen && searchInput.trim().length > 0 && suggestions.length === 0;
 
   const getRowForVersion = React.useCallback(
     (datasetName: string, versionIndex: number): TableRow => {
@@ -930,8 +1176,9 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
     closeDetail();
     setStatusFilter("all");
     setDgoFilter("all");
+    clearSearch();
     setIsLanding(true);
-  }, [closeDetail]);
+  }, [clearSearch, closeDetail]);
 
   const dgoFilterIdRef = React.useRef(`dgo-filter-${Math.random().toString(36).slice(2, 8)}`);
   const dgoFilterId = dgoFilterIdRef.current;
@@ -1010,9 +1257,10 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
     return rows.filter(row => {
       const statusMatches = statusFilter === "all" || row.status === statusFilter;
       const dgoMatches = dgoFilter === "all" || row.dgo === dgoFilter;
-      return statusMatches && dgoMatches;
+      const searchMatches = rowMatchesSearch(row);
+      return statusMatches && dgoMatches && searchMatches;
     });
-  }, [rows, statusFilter, dgoFilter]);
+  }, [dgoFilter, rowMatchesSearch, rows, statusFilter]);
 
   const totals = React.useMemo(() => {
     const summary = {
@@ -1034,7 +1282,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
     return summary;
   }, [filteredRows]);
 
-  const isFiltered = statusFilter !== "all" || dgoFilter !== "all";
+  const isFiltered = statusFilter !== "all" || dgoFilter !== "all" || hasSearch;
 
   const portfolioRiskTotal = totals.atRisk + totals.blocked;
   const totalCoveragePoints = React.useMemo(
@@ -1411,6 +1659,88 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
                   </div>
                 </div>
                 <div className="dt-filter-bar-right">
+                  <div className="dt-filter-search" data-open={searchOpen} ref={searchContainerRef}>
+                    <button
+                      type="button"
+                      className="dt-filter-search-toggle"
+                      onClick={handleSearchToggle}
+                      aria-label={searchToggleLabel}
+                      aria-expanded={searchOpen}
+                      aria-controls={searchOpen && suggestions.length > 0 ? searchListId : undefined}
+                    >
+                      <svg className="dt-filter-search-toggle-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path
+                          d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.71.71l.27.28v.79l4.25 4.24a1 1 0 0 0 1.42-1.42L15.5 14zm-5 0a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"
+                          fill="currentColor"
+                        />
+                      </svg>
+                    </button>
+                    {searchOpen ? (
+                      <div className="dt-filter-search-field">
+                        <input
+                          ref={searchInputRef}
+                          type="text"
+                          className="dt-filter-search-input"
+                          placeholder="Search datasets, domains, owners..."
+                          value={searchInput}
+                          onChange={handleSearchInputChange}
+                          onKeyDown={handleSearchKeyDown}
+                          aria-controls={suggestions.length > 0 ? searchListId : undefined}
+                        />
+                        {searchInput.trim().length > 0 || activeSearchFilter ? (
+                          <button
+                            type="button"
+                            className="dt-filter-search-clear"
+                            onClick={resetSearchInput}
+                            aria-label="Clear search text"
+                          >
+                            Clear
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {searchOpen ? (
+                      suggestions.length > 0 ? (
+                        <ul className="dt-filter-search-suggestions" role="listbox" id={searchListId}>
+                          {suggestions.map(entry => (
+                            <li key={`${entry.type}-${entry.value}`}>
+                              <button type="button" className="dt-filter-search-option" onClick={() => handleSuggestionSelect(entry)}>
+                                <span className={`dt-filter-search-icon dt-filter-search-icon--${entry.type}`}>
+                                  {searchTypeConfig[entry.type].shortLabel}
+                                </span>
+                                <span className="dt-filter-search-option-copy">
+                                  <span className="dt-filter-search-option-text">{entry.value}</span>
+                                  <span className="dt-filter-search-context">{searchTypeConfig[entry.type].label}</span>
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : showEmptySuggestions ? (
+                        <div className="dt-filter-search-empty">No matches found</div>
+                      ) : null
+                    ) : null}
+                  </div>
+                  {showSearchPill ? (
+                    <div
+                      className="dt-filter-search-pill"
+                      role="status"
+                      aria-label={`Search filtered by ${searchPillLabel}: ${searchPillValue}`}
+                    >
+                      <span className={`dt-filter-search-icon dt-filter-search-icon--${searchPillType}`}>
+                        {searchPillBadge}
+                      </span>
+                      <span className="dt-filter-search-pill-text">{searchPillValue}</span>
+                      <button
+                        type="button"
+                        className="dt-filter-search-pill-clear"
+                        onClick={clearSearch}
+                        aria-label="Clear search filter"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : null}
                   <div className="dt-filter-metric" aria-label={filterMetricLabel}>
                     <span className="dt-filter-metric-value">{filteredSummary.total}</span>
                     <span className="dt-filter-metric-caption">in view</span>
@@ -1421,6 +1751,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
                     onClick={() => {
                       setStatusFilter("all");
                       setDgoFilter("all");
+                      clearSearch();
                     }}
                     disabled={!isFiltered}
                   >
