@@ -2,8 +2,17 @@ import * as React from "react";
 import { scoreLabels, scoreOrder, statusCopy, statusOptions } from "../constants";
 import { parseCommaSeparated, parseLineSeparated } from "../dataTransforms";
 import { formatDate, formatTimestamp } from "../formatters";
-import type { ChangeVersion, CoverageMetric, DataObjectsAndMeasure, DatasetDetail, StatusVariant, TableRow } from "../types";
+import type {
+  ChangeVersion,
+  CoverageMetric,
+  DataObjectsAndMeasure,
+  DatasetDetail,
+  StatusVariant,
+  TableRow,
+} from "../types";
 import { MultiselectComboBox } from "./MultiselectComboBox";
+import type { ComparisonSection } from "./ComparisonView";
+import { ComparisonView } from "./ComparisonView";
 
 export interface DetailPanelProps {
   detailRow: TableRow | null;
@@ -14,8 +23,19 @@ export interface DetailPanelProps {
   selectedDatasetName: string | null;
   changeHistoryEntries: ChangeVersion[];
   activeVersionIndex: number;
+  activeVersion?: ChangeVersion;
+  baselineRow: TableRow | null;
+  baselineLabel: string;
+  comparisonTargetLabel: string;
+  comparisonSections: ComparisonSection[];
+  sectionDiff: Record<string, boolean>;
+  fieldDiff: Record<string, boolean>;
+  compareMode: "inline" | "side-by-side";
+  onCompareModeChange: (mode: "inline" | "side-by-side") => void;
   regionOptions: string[];
   languageOptions: string[];
+  onApproveActiveVersion: () => void;
+  canApprove: boolean;
   onClose: () => void;
   onStartEdit: () => void;
   onCancelEdit: () => void;
@@ -36,8 +56,19 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
   selectedDatasetName,
   changeHistoryEntries,
   activeVersionIndex,
+  activeVersion,
+  baselineRow,
+  baselineLabel,
+  comparisonTargetLabel,
+  comparisonSections,
+  sectionDiff,
+  fieldDiff,
+  compareMode,
+  onCompareModeChange,
   regionOptions,
   languageOptions,
+  onApproveActiveVersion,
+  canApprove,
   onClose,
   onStartEdit,
   onCancelEdit,
@@ -53,6 +84,18 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
   }
 
   const detailHeadingId = detailTitleId ?? `dataset-detail-${detailRow.datasetName.replace(/[^a-zA-Z0-9]+/g, "-")}`;
+  const inlineDiffEnabled = !isEditing;
+  const getFieldDiffAttr = (key: string) => (inlineDiffEnabled && fieldDiff[key] ? "changed" : undefined);
+  const getSectionDiffAttr = (key: string) => (inlineDiffEnabled && sectionDiff[key] ? "changed" : undefined);
+  const showComparison = inlineDiffEnabled && compareMode === "side-by-side" && baselineRow;
+  const showCompareToggle = inlineDiffEnabled && baselineRow !== null;
+  const versionStatus = activeVersionIndex === 0 ? "baseline" : activeVersion?.status ?? "pending";
+  const versionStatusLabel =
+    activeVersionIndex === 0
+      ? baselineLabel
+      : activeVersion?.status === "approved"
+        ? "Approved"
+        : "Pending approval";
 
   return (
     <div
@@ -77,7 +120,9 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
                 placeholder="Business unit"
               />
             ) : (
-              <p className="dt-detail-subtitle">{detailRow.detail.businessUnit}</p>
+              <p className="dt-detail-subtitle" data-diff={getFieldDiffAttr("businessUnit")}>
+                {detailRow.detail.businessUnit}
+              </p>
             )}
             <h2 className="dt-detail-title" id={detailHeadingId}>
               {isEditing ? (
@@ -88,7 +133,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
                   placeholder="Dataset name"
                 />
               ) : (
-                detailRow.datasetName
+                <span data-diff={getFieldDiffAttr("datasetName")}>{detailRow.datasetName}</span>
               )}
             </h2>
             {isEditing ? (
@@ -99,11 +144,26 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
                 placeholder="High-level summary"
               />
             ) : (
-              <p className="dt-detail-summary">{detailRow.datasetSummary}</p>
+              <p className="dt-detail-summary" data-diff={getFieldDiffAttr("datasetSummary")}>
+                {detailRow.datasetSummary}
+              </p>
             )}
             <div className="dt-detail-header-context" aria-live="polite">
-              <span className="dt-detail-badge">{viewingBadge}</span>
+              <span className="dt-detail-badge" data-diff={getFieldDiffAttr("status")}>{viewingBadge}</span>
               <span className="dt-detail-context">{viewingTimestampLabel}</span>
+              <span className="dt-detail-status-chip" data-status={versionStatus}>
+                {versionStatusLabel}
+              </span>
+              {activeVersionIndex > 0 && activeVersion?.submittedBy ? (
+                <span className="dt-detail-context">
+                  Requested by {activeVersion.submittedBy} · {formatTimestamp(activeVersion.submittedAt)}
+                </span>
+              ) : null}
+              {activeVersion?.approval ? (
+                <span className="dt-detail-context">
+                  Approved by {activeVersion.approval.by} · {formatTimestamp(activeVersion.approval.at)}
+                </span>
+              ) : null}
             </div>
           </div>
           <div className="dt-detail-header-actions">
@@ -134,6 +194,16 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
                 <span className="dt-status" data-variant={detailRow.status}>
                   {statusCopy[detailRow.status].label}
                 </span>
+                {activeVersionIndex > 0 && activeVersion?.status !== "approved" ? (
+                  <button
+                    type="button"
+                    className="dt-detail-action dt-detail-action--approve"
+                    onClick={onApproveActiveVersion}
+                    disabled={!canApprove}
+                  >
+                    Approve version
+                  </button>
+                ) : null}
                 <button type="button" className="dt-detail-action" onClick={onStartEdit}>
                   Edit details
                 </button>
@@ -145,7 +215,36 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
           </div>
         </header>
 
+        {showCompareToggle ? (
+          <div className="dt-detail-compare-toggle" role="group" aria-label="Comparison mode">
+            <button
+              type="button"
+              className="dt-detail-compare-button"
+              data-active={compareMode === "inline" ? "true" : undefined}
+              onClick={() => onCompareModeChange("inline")}
+            >
+              Inline
+            </button>
+            <button
+              type="button"
+              className="dt-detail-compare-button"
+              data-active={compareMode === "side-by-side" ? "true" : undefined}
+              onClick={() => onCompareModeChange("side-by-side")}
+              disabled={!baselineRow || !detailRow}
+            >
+              Side-by-side
+            </button>
+          </div>
+        ) : null}
+
         <section className="dt-detail-content">
+          {showComparison ? (
+            <ComparisonView
+              sections={comparisonSections}
+              baselineLabel={baselineLabel}
+              targetLabel={comparisonTargetLabel}
+            />
+          ) : null}
           {selectedDatasetName && changeHistoryEntries.length > 0 ? (
             <aside className="dt-detail-history" aria-label="Change history">
               <h3 className="dt-detail-history-title">Change history</h3>
@@ -158,8 +257,8 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
                     onClick={() => onVersionChange(selectedDatasetName, 0)}
                     disabled={isEditing}
                   >
-                    <span className="dt-detail-history-label">Original</span>
-                    <span className="dt-detail-history-meta">Source of truth</span>
+                    <span className="dt-detail-history-label">Baseline</span>
+                    <span className="dt-detail-history-meta">{baselineLabel}</span>
                   </button>
                 </li>
                 {changeHistoryEntries.map((entry, index) => {
@@ -174,7 +273,18 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
                         disabled={isEditing && activeVersionIndex !== versionIndex}
                       >
                         <span className="dt-detail-history-label">Version {entry.version}</span>
-                        <span className="dt-detail-history-meta">Saved {formatTimestamp(entry.submittedAt)}</span>
+                        <span className="dt-detail-history-meta">
+                          Saved {formatTimestamp(entry.submittedAt)}
+                          {entry.submittedBy ? ` · ${entry.submittedBy}` : ""}
+                        </span>
+                        <span className="dt-detail-history-status" data-status={entry.status}>
+                          {entry.status === "approved" ? "Approved" : "Pending"}
+                        </span>
+                        {entry.approval ? (
+                          <span className="dt-detail-history-meta">
+                            Approved by {entry.approval.by} · {formatTimestamp(entry.approval.at)}
+                          </span>
+                        ) : null}
                       </button>
                     </li>
                   );
@@ -182,7 +292,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
               </ul>
             </aside>
           ) : null}
-          <div className="dt-detail-metrics">
+          <div className="dt-detail-metrics" data-diff={getSectionDiffAttr("metrics")}>
             <div className="dt-detail-metric">
               <p className="dt-detail-metric-label">Coverage count</p>
               {isEditing ? (
@@ -236,7 +346,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
           </div>
 
           <div className="dt-detail-grid">
-            <article className="dt-detail-card lg:col-span-7">
+            <article className="dt-detail-card lg:col-span-7" data-diff={getSectionDiffAttr("overview")}>
               <h3 className="dt-detail-card-title">Overview</h3>
               {isEditing ? (
                 <textarea
@@ -324,7 +434,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
               )}
             </article>
 
-            <article className="dt-detail-card lg:col-span-5">
+            <article className="dt-detail-card lg:col-span-5" data-diff={getSectionDiffAttr("stewardship")}>
               <h3 className="dt-detail-card-title">Stewardship &amp; readiness</h3>
               <dl className="dt-detail-properties dt-detail-properties--stacked">
                 <div>
@@ -414,9 +524,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
                 </div>
               </dl>
             </article>
-
-            <article className="dt-detail-card lg:col-span-5">
-              <h3 className="dt-detail-card-title">Coverage metric</h3>
+            <article className="dt-detail-card lg:col-span-5" data-diff={getSectionDiffAttr("coverage")}>
               <dl className="dt-detail-properties dt-detail-properties--stacked">
                 <div>
                   <dt>Coverage count</dt>
@@ -493,7 +601,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
               </dl>
             </article>
 
-            <article className="dt-detail-card lg:col-span-7">
+            <article className="dt-detail-card lg:col-span-7" data-diff={getSectionDiffAttr("scores")}>
               <h3 className="dt-detail-card-title">Data objects &amp; measures</h3>
               <div className="dt-detail-scores">
                 {scoreOrder.map(key => (
@@ -516,7 +624,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
               </div>
             </article>
 
-            <article className="dt-detail-card lg:col-span-5">
+            <article className="dt-detail-card lg:col-span-5" data-diff={getSectionDiffAttr("features")}>
               <h3 className="dt-detail-card-title">Features &amp; benefits</h3>
               {isEditing ? (
                 <textarea
@@ -534,7 +642,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
               )}
             </article>
 
-            <article className="dt-detail-card lg:col-span-6">
+            <article className="dt-detail-card lg:col-span-6" data-diff={getSectionDiffAttr("distribution")}>
               <h3 className="dt-detail-card-title">Distribution &amp; localisation</h3>
               <div className="dt-detail-distribution">
                 <div>

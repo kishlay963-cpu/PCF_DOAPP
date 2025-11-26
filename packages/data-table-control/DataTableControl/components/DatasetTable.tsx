@@ -1,8 +1,17 @@
 import * as React from "react";
 import { statusCopy } from "../constants";
-import { formatDate } from "../formatters";
+import { formatDate, formatTimestamp } from "../formatters";
 import { toSlug } from "../helpers";
 import type { TableRow } from "../types";
+
+export interface DatasetRowMetadata {
+  pendingCount: number;
+  pendingLabel?: string;
+  baselineLabel: string;
+  hasApprovedBaseline: boolean;
+  approvedBy?: string;
+  approvedAt?: string;
+}
 
 export interface DatasetTableProps {
   rows: TableRow[];
@@ -10,6 +19,7 @@ export interface DatasetTableProps {
   onDeadlineChange: (datasetName: string, value: string) => void;
   onRowSelect: (row: TableRow) => void;
   filtersAppliedLabel: string;
+  rowMetadata: Record<string, DatasetRowMetadata>;
 }
 
 export const DatasetTable: React.FC<DatasetTableProps> = ({
@@ -18,6 +28,7 @@ export const DatasetTable: React.FC<DatasetTableProps> = ({
   onDeadlineChange,
   onRowSelect,
   filtersAppliedLabel,
+  rowMetadata,
 }) => {
   return (
     <section className="dt-card dt-table">
@@ -37,6 +48,7 @@ export const DatasetTable: React.FC<DatasetTableProps> = ({
               rows.map(row => {
                 const slug = toSlug(row.datasetName);
                 const deadlineId = `deadline-${slug}`;
+                const metadata = rowMetadata[row.datasetName];
                 const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
@@ -55,6 +67,23 @@ export const DatasetTable: React.FC<DatasetTableProps> = ({
                   >
                     <div className="dt-cell">
                       <p className="text-base font-semibold text-slate-900">{row.datasetName}</p>
+                      <div className="dt-table-pill-group">
+                        <span
+                          className="dt-table-pill dt-table-pill--baseline"
+                          data-approved={metadata?.hasApprovedBaseline ? "true" : "false"}
+                        >
+                          {metadata?.baselineLabel ?? "Original baseline"}
+                        </span>
+                        {metadata?.pendingCount ? (
+                          <span className="dt-table-pill dt-table-pill--pending">{metadata.pendingLabel ?? `${metadata.pendingCount} pending`}</span>
+                        ) : null}
+                      </div>
+                      {metadata?.approvedBy ? (
+                        <p className="dt-cell--meta">
+                          Approved by {metadata.approvedBy}
+                          {metadata.approvedAt ? ` · ${formatTimestamp(metadata.approvedAt)}` : ""}
+                        </p>
+                      ) : null}
                       <p className="dt-cell--muted">{row.datasetSummary}</p>
                     </div>
                     <div className="dt-cell">

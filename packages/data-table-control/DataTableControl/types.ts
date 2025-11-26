@@ -71,9 +71,19 @@ export interface DetailEntry {
   detail: DatasetDetail;
 }
 
+export type ChangeStatus = "pending" | "approved";
+
+export interface ChangeApproval {
+  by: string;
+  at: string;
+}
+
 export interface ChangeVersion {
   version: number;
   submittedAt: string;
+  submittedBy?: string;
+  status: ChangeStatus;
+  approval?: ChangeApproval;
   row: TableRow;
 }
 

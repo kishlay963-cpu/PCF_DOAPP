@@ -1,6 +1,8 @@
 import { defaultDetailData, defaultDetailMap, defaultTableData } from "./data";
 import { cloneDetail, cloneDetailMap, cloneRow, createEmptyDetail, normaliseStatus } from "./helpers";
 import type {
+  ChangeApproval,
+  ChangeStatus,
   ChangeVersion,
   CoverageMetric,
   DataObjectsAndMeasure,
@@ -226,6 +228,9 @@ export const serialiseChangeRequest = (map: Record<string, ChangeVersion[]>): st
 interface ChangeVersionDraft {
   version?: unknown;
   submittedAt?: unknown;
+  submittedBy?: unknown;
+  status?: unknown;
+  approval?: unknown;
   row?: Partial<TableRow> | null | undefined;
 }
 
@@ -237,6 +242,11 @@ const sanitiseChangeVersion = (entry: unknown, fallbackRow?: TableRow): ChangeVe
   const rawVersion = typeof candidate.version === "number" ? candidate.version : Number(candidate.version);
   const version = Number.isFinite(rawVersion) && rawVersion > 0 ? Math.floor(rawVersion) : 1;
   const submittedAt = typeof candidate.submittedAt === "string" && candidate.submittedAt ? candidate.submittedAt : new Date().toISOString();
+  const submittedBy = typeof candidate.submittedBy === "string" && candidate.submittedBy ? candidate.submittedBy : undefined;
+  let status: ChangeStatus = "pending";
+  if (candidate.status === "approved" || candidate.status === "pending") {
+    status = candidate.status;
+  }
   const rowSource = candidate.row ?? fallbackRow;
   if (!rowSource) {
     return null;
@@ -257,9 +267,30 @@ const sanitiseChangeVersion = (entry: unknown, fallbackRow?: TableRow): ChangeVe
     deadline: rowSource.deadline ?? fallbackRow?.deadline ?? "",
     detail: cloneDetail(detailSource),
   };
+  let approval: ChangeApproval | undefined;
+  if (candidate.approval && typeof candidate.approval === "object") {
+    const rawApproval = candidate.approval as ChangeApproval;
+    if (typeof rawApproval.by === "string" && typeof rawApproval.at === "string") {
+      approval = {
+        by: rawApproval.by,
+        at: rawApproval.at,
+      };
+    }
+  }
+  if (status === "approved" && !approval) {
+    approval = {
+      by: submittedBy ?? "",
+      at: submittedAt,
+    };
+  } else if (approval?.by && status !== "approved") {
+    status = "approved";
+  }
   return {
     version,
     submittedAt,
+    submittedBy,
+    status,
+    approval,
     row,
   };
 };

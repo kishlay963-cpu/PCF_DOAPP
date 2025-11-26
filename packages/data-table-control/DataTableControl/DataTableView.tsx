@@ -11,7 +11,7 @@ import type {
   StatusVariant,
   TableRow,
 } from "./types";
-import { searchTypeConfig } from "./constants";
+import { searchTypeConfig, scoreLabels, scoreOrder, statusCopy } from "./constants";
 import { buildSearchIndex } from "./search";
 import {
   buildDeadlineMap,
@@ -25,10 +25,12 @@ import {
 } from "./dataTransforms";
 import { formatDate, formatTimestamp } from "./formatters";
 import { DatasetTable } from "./components/DatasetTable";
+import type { DatasetRowMetadata } from "./components/DatasetTable";
 import { DetailPanel } from "./components/DetailPanel";
 import { FilterBar, SearchUiHandlers, SearchUiState } from "./components/FilterBar";
 import { LandingHighlight, LandingView } from "./components/LandingView";
 import { KpiCard, KpiGrid } from "./components/KpiGrid";
+import type { ComparisonSection } from "./components/ComparisonView";
 
 const logoSvgMarkup = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
   <title id="title">Data Trust Shield</title>
@@ -50,6 +52,257 @@ const logoSvgMarkup = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 
 </svg>`;
 
 const logoAsset = `data:image/svg+xml;utf8,${encodeURIComponent(logoSvgMarkup)}`;
+
+type ComparisonSectionId =
+  | "header"
+  | "metrics"
+  | "overview"
+  | "stewardship"
+  | "coverage"
+  | "scores"
+  | "features"
+  | "distribution"
+  | "access";
+
+interface ComparisonFieldSpec {
+  key: string;
+  label: string;
+  section: ComparisonSectionId;
+  getter: (row: TableRow) => string;
+}
+
+const comparisonSectionMeta: Record<ComparisonSectionId, { title: string }> = {
+  header: { title: "Portfolio summary" },
+  metrics: { title: "Readiness metrics" },
+  overview: { title: "Narrative & classification" },
+  stewardship: { title: "Stewardship & governance" },
+  coverage: { title: "Coverage metric" },
+  scores: { title: "Data objects & measures" },
+  features: { title: "Features & benefits" },
+  distribution: { title: "Distribution & localisation" },
+  access: { title: "Commercial & access" },
+};
+
+const comparisonSectionOrder: ComparisonSectionId[] = [
+  "header",
+  "metrics",
+  "overview",
+  "stewardship",
+  "coverage",
+  "scores",
+  "features",
+  "distribution",
+  "access",
+];
+
+const joinList = (values: string[]) => values.join(", ");
+const joinLines = (values: string[]) => values.join("\n");
+
+const buildComparisonFieldSpec = (): ComparisonFieldSpec[] => {
+  const baseSpec: ComparisonFieldSpec[] = [
+    { key: "datasetName", label: "Dataset name", section: "header", getter: row => row.datasetName },
+    { key: "datasetSummary", label: "Summary", section: "header", getter: row => row.datasetSummary },
+    { key: "businessUnit", label: "Business unit", section: "header", getter: row => row.detail.businessUnit },
+    { key: "coverageCount", label: "Coverage count", section: "metrics", getter: row => row.detail.coverageCount.toLocaleString() },
+    { key: "dataFrequency", label: "Data frequency", section: "metrics", getter: row => row.detail.dataFrequency },
+    { key: "timePeriod", label: "Time period", section: "metrics", getter: row => row.detail.timePeriod },
+    {
+      key: "minimumDataFrequency",
+      label: "Minimum frequency",
+      section: "metrics",
+      getter: row => row.detail.minimumDataFrequency,
+    },
+    { key: "overviewDescription", label: "Narrative overview", section: "overview", getter: row => row.detail.description },
+    { key: "domain", label: "Domain", section: "overview", getter: row => row.detail.domain },
+    { key: "subdomain", label: "Subdomain", section: "overview", getter: row => row.detail.subdomain },
+    { key: "history", label: "History", section: "overview", getter: row => row.detail.history },
+    { key: "dataTypes", label: "Data types", section: "overview", getter: row => joinLines(row.detail.dataTypes) },
+    {
+      key: "status",
+      label: "Status",
+      section: "stewardship",
+      getter: row => statusCopy[row.status].label,
+    },
+    { key: "descriptionValidation", label: "Readiness notes", section: "stewardship", getter: row => row.descriptionValidation },
+    { key: "dataOwner", label: "Data owner", section: "stewardship", getter: row => row.dataOwner },
+    { key: "dataOwnerRole", label: "Owner role", section: "stewardship", getter: row => row.dataOwnerRole },
+    { key: "dgo", label: "Data governance office", section: "stewardship", getter: row => row.dgo },
+    { key: "doSpoc", label: "DO SPOC", section: "stewardship", getter: row => row.doSpoc },
+    { key: "deadline", label: "Target deadline", section: "stewardship", getter: row => formatDate(row.deadline) },
+    {
+      key: "coverageMetric.coverageCount",
+      label: "Coverage metric · Count",
+      section: "coverage",
+      getter: row => row.detail.coverageMetric.coverageCount.toLocaleString(),
+    },
+    {
+      key: "coverageMetric.dataFrequency",
+      label: "Coverage metric · Frequency",
+      section: "coverage",
+      getter: row => row.detail.coverageMetric.dataFrequency,
+    },
+    {
+      key: "coverageMetric.dataTypes",
+      label: "Coverage metric · Data types",
+      section: "coverage",
+      getter: row => row.detail.coverageMetric.dataTypes,
+    },
+    {
+      key: "coverageMetric.geography",
+      label: "Coverage metric · Geography",
+      section: "coverage",
+      getter: row => row.detail.coverageMetric.geography,
+    },
+    {
+      key: "coverageMetric.history",
+      label: "Coverage metric · History",
+      section: "coverage",
+      getter: row => row.detail.coverageMetric.history,
+    },
+    {
+      key: "features",
+      label: "Features & benefits",
+      section: "features",
+      getter: row => joinLines(row.detail.features),
+    },
+    {
+      key: "regions",
+      label: "Regions",
+      section: "distribution",
+      getter: row => joinList(row.detail.regions),
+    },
+    {
+      key: "geography",
+      label: "Geography coverage",
+      section: "distribution",
+      getter: row => joinList(row.detail.geography),
+    },
+    {
+      key: "languages",
+      label: "Languages",
+      section: "distribution",
+      getter: row => joinList(row.detail.languages),
+    },
+    {
+      key: "tags",
+      label: "Tags",
+      section: "distribution",
+      getter: row => joinList(row.detail.tags),
+    },
+    {
+      key: "marketingUrl",
+      label: "Marketing site",
+      section: "access",
+      getter: row => row.detail.marketingUrl,
+    },
+    {
+      key: "minimumCadence",
+      label: "Minimum cadence",
+      section: "access",
+      getter: row => row.detail.minimumDataFrequency,
+    },
+  ];
+
+  const scoreSpec: ComparisonFieldSpec[] = scoreOrder.map(key => ({
+    key: `score.${key}`,
+    label: `${scoreLabels[key]}`,
+    section: "scores",
+    getter: row => row.detail.dataObjectsAndMeasure[key].toString(),
+  }));
+
+  return [...baseSpec, ...scoreSpec];
+};
+
+const comparisonFieldSpec = buildComparisonFieldSpec();
+
+const deriveApprovedRows = (baseRows: TableRow[], historyMap: Record<string, ChangeVersion[]>): TableRow[] => {
+  const entryMap = new Map<string, { index: number; row: TableRow }>();
+  baseRows.forEach((row, index) => {
+    entryMap.set(row.datasetName, { index, row: cloneRow(row) });
+  });
+
+  const additionalRows: TableRow[] = [];
+
+  Object.entries(historyMap).forEach(([key, history]) => {
+    const approvedEntries = history.filter(entry => entry.status === "approved");
+    if (approvedEntries.length === 0) {
+      return;
+    }
+    const latestApproved = approvedEntries[approvedEntries.length - 1];
+    const updatedRow = cloneRow(latestApproved.row);
+    const existing = entryMap.get(key);
+    if (existing) {
+      entryMap.delete(key);
+      entryMap.set(updatedRow.datasetName, { index: existing.index, row: updatedRow });
+    } else {
+      additionalRows.push(updatedRow);
+    }
+  });
+
+  const orderedEntries = Array.from(entryMap.values()).sort((a, b) => a.index - b.index).map(entry => entry.row);
+
+  if (additionalRows.length > 0) {
+    additionalRows
+      .sort((a, b) => a.datasetName.localeCompare(b.datasetName))
+      .forEach(row => {
+        orderedEntries.push(cloneRow(row));
+      });
+  }
+
+  return orderedEntries;
+};
+
+const buildComparisonData = (
+  baseline: TableRow | null,
+  candidate: TableRow | null,
+): { sections: ComparisonSection[]; fieldDiff: Record<string, boolean>; sectionDiff: Record<string, boolean> } => {
+  if (!baseline || !candidate) {
+    const emptySections: ComparisonSection[] = comparisonSectionOrder.map(section => ({
+      id: section,
+      title: comparisonSectionMeta[section].title,
+      rows: [],
+    }));
+    return { sections: emptySections, fieldDiff: {}, sectionDiff: {} };
+  }
+
+  const rowsBySection = new Map<ComparisonSectionId, ComparisonSection["rows"]>();
+  comparisonSectionOrder.forEach(section => {
+    rowsBySection.set(section, []);
+  });
+
+  const fieldDiff: Record<string, boolean> = {};
+  const sectionDiff: Record<string, boolean> = {};
+
+  comparisonFieldSpec.forEach(spec => {
+    const baselineValue = spec.getter(baseline);
+    const candidateValue = spec.getter(candidate);
+    const changed = baselineValue !== candidateValue;
+    fieldDiff[spec.key] = changed;
+    if (changed) {
+      sectionDiff[spec.section] = true;
+    } else {
+      sectionDiff[spec.section] ??= false;
+    }
+    const sectionRows = rowsBySection.get(spec.section);
+    if (sectionRows) {
+      sectionRows.push({
+        key: spec.key,
+        label: spec.label,
+        baseline: baselineValue,
+        target: candidateValue,
+        changed,
+      });
+    }
+  });
+
+  const sections: ComparisonSection[] = comparisonSectionOrder.map(section => ({
+    id: section,
+    title: comparisonSectionMeta[section].title,
+    rows: rowsBySection.get(section) ?? [],
+  }));
+
+  return { sections, fieldDiff, sectionDiff };
+};
 
 export interface DataTableViewProps {
   title: string;
@@ -77,18 +330,13 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
   const tableSource = tableJson ?? "";
   const detailSource = detailJson ?? "";
 
-  const initialRowsRef = React.useRef<TableRow[]>([]);
-  if (initialRowsRef.current.length === 0) {
+  const initialRows = React.useMemo(() => {
     const initialSummaries = parseTableSummaries(tableSource);
     const initialDetails = parseDetailEntries(detailSource);
-    initialRowsRef.current = mergeRows(initialSummaries, initialDetails);
-  }
-  const initialRows = initialRowsRef.current;
+    return mergeRows(initialSummaries, initialDetails);
+  }, [detailSource, tableSource]);
 
-  const originalRowMapRef = React.useRef<Record<string, TableRow>>({});
-  if (Object.keys(originalRowMapRef.current).length === 0) {
-    originalRowMapRef.current = buildRowMap(initialRows);
-  }
+  const baselineRowMapRef = React.useRef<Record<string, TableRow>>(buildRowMap(initialRows));
 
   const parsedRegionOptions = React.useMemo(() => parseOptionList(regionOptionsJson ?? "", defaultRegions), [regionOptionsJson]);
   const parsedLanguageOptions = React.useMemo(() => parseOptionList(languageOptionsJson ?? "", defaultLanguages), [languageOptionsJson]);
@@ -109,15 +357,17 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
       .sort((a, b) => a.localeCompare(b));
   }, [initialRows, parsedLanguageOptions]);
 
-  const initialChangeHistoryRef = React.useRef<Record<string, ChangeVersion[]>>({});
-  if (Object.keys(initialChangeHistoryRef.current).length === 0) {
-    initialChangeHistoryRef.current = parseChangeRequestJson(changeRequestJson ?? "", originalRowMapRef.current);
-  }
+  const initialChangeHistoryRef = React.useRef<Record<string, ChangeVersion[]>>(
+    parseChangeRequestJson(changeRequestJson ?? "", baselineRowMapRef.current),
+  );
 
   const [changeHistoryMap, setChangeHistoryMap] = React.useState<Record<string, ChangeVersion[]>>(initialChangeHistoryRef.current);
   const changeHistorySourceRef = React.useRef(changeRequestJson ?? "");
 
-  const [rows, setRows] = React.useState<TableRow[]>(initialRows);
+  const approvedRowsSeedRef = React.useRef<TableRow[] | null>(null);
+  approvedRowsSeedRef.current ??= deriveApprovedRows(initialRows, initialChangeHistoryRef.current);
+
+  const [rows, setRows] = React.useState<TableRow[]>(approvedRowsSeedRef.current ?? initialRows);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [searchInput, setSearchInput] = React.useState("");
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -127,15 +377,37 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
   const searchListIdRef = React.useRef(`dt-search-${Math.random().toString(36).slice(2, 8)}`);
   const [statusFilter, setStatusFilter] = React.useState<StatusVariant | "all">("all");
   const [dgoFilter, setDgoFilter] = React.useState<string>("all");
-  const [deadlineMap, setDeadlineMap] = React.useState<Record<string, string>>(() => buildDeadlineMap(initialRows));
+  const [deadlineMap, setDeadlineMap] = React.useState<Record<string, string>>(() =>
+    buildDeadlineMap(approvedRowsSeedRef.current ?? initialRows),
+  );
+
+
+  const syncApprovedState = React.useCallback(
+    (nextHistoryMap: Record<string, ChangeVersion[]>) => {
+      const nextRows = deriveApprovedRows(rows, nextHistoryMap);
+      setRows(nextRows);
+      setDeadlineMap(buildDeadlineMap(nextRows));
+      baselineRowMapRef.current = buildRowMap(nextRows);
+      const serialised = serialiseChangeRequest(nextHistoryMap);
+      changeHistorySourceRef.current = serialised;
+      initialChangeHistoryRef.current = nextHistoryMap;
+      if (onChangeRequestUpdate) {
+        onChangeRequestUpdate(serialised);
+      }
+    },
+    [onChangeRequestUpdate, rows],
+  );
   const [selectedRow, setSelectedRow] = React.useState<TableRow | null>(null);
   const [editingRow, setEditingRow] = React.useState<TableRow | null>(null);
   const [isEditing, setIsEditing] = React.useState(false);
   const [isLanding, setIsLanding] = React.useState(true);
+  const [compareMode, setCompareMode] = React.useState<"inline" | "side-by-side">("inline");
   const [selectedDatasetName, setSelectedDatasetName] = React.useState<string | null>(null);
   const [activeVersionMap, setActiveVersionMap] = React.useState<Record<string, number>>({});
   const activeVersionIndex = selectedDatasetName ? activeVersionMap[selectedDatasetName] ?? 0 : 0;
   const dgoFilterIdRef = React.useRef(`dgo-filter-${Math.random().toString(36).slice(2, 8)}`);
+  const trimmedUserName = userName?.trim();
+  const displayName = trimmedUserName && trimmedUserName.length > 0 ? trimmedUserName : "Data Steward";
 
   const searchListId = searchListIdRef.current;
   const dgoFilterId = dgoFilterIdRef.current;
@@ -319,6 +591,37 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
       return rowMatchesSearch(row);
     });
   }, [dgoFilter, rowMatchesSearch, rows, statusFilter]);
+
+  const rowMetadata = React.useMemo<Record<string, DatasetRowMetadata>>(() => {
+    const meta: Record<string, DatasetRowMetadata> = {};
+    rows.forEach(row => {
+      const history = changeHistoryMap[row.datasetName] ?? [];
+      let pendingCount = 0;
+      let latestPendingVersion: number | undefined;
+      let latestApproved: ChangeVersion | undefined;
+      history.forEach(entry => {
+        if (entry.status === "approved") {
+          if (!latestApproved || entry.version > latestApproved.version) {
+            latestApproved = entry;
+          }
+        } else {
+          pendingCount += 1;
+          if (!latestPendingVersion || entry.version > latestPendingVersion) {
+            latestPendingVersion = entry.version;
+          }
+        }
+      });
+      meta[row.datasetName] = {
+        pendingCount,
+        pendingLabel: pendingCount > 0 && latestPendingVersion ? `Pending v${latestPendingVersion}` : undefined,
+        baselineLabel: latestApproved ? `Approved v${latestApproved.version}` : "Original dataset",
+        hasApprovedBaseline: Boolean(latestApproved),
+        approvedBy: latestApproved?.approval?.by,
+        approvedAt: latestApproved?.approval?.at ?? latestApproved?.submittedAt,
+      };
+    });
+    return meta;
+  }, [changeHistoryMap, rows]);
 
   const dgoOptions = React.useMemo(() => {
     const values = new Set<string>();
@@ -546,7 +849,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
           return cloneRow(changeEntry.row);
         }
       }
-      const original = originalRowMapRef.current[datasetName];
+      const original = baselineRowMapRef.current[datasetName];
       if (original) {
         return cloneRow(original);
       }
@@ -607,6 +910,10 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
     [getRowForVersion],
   );
 
+  const handleCompareModeChange = React.useCallback((mode: "inline" | "side-by-side") => {
+    setCompareMode(mode);
+  }, []);
+
   const startEdit = React.useCallback(() => {
     if (!selectedRow) {
       return;
@@ -629,69 +936,79 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
     if (!editingRow) {
       return;
     }
-    const canonicalName = selectedDatasetName ?? editingRow.datasetName;
+    const datasetKey = selectedDatasetName ?? editingRow.datasetName;
     const updatedRow = cloneRow(editingRow);
-    const existingHistory = changeHistoryMap[canonicalName] ?? [];
+    const existingHistory = changeHistoryMap[datasetKey] ?? [];
     const nextVersionNumber = existingHistory.length === 0 ? 1 : existingHistory[existingHistory.length - 1].version + 1;
     const timestamp = new Date().toISOString();
+    const submitterName = displayName;
     const nextEntry: ChangeVersion = {
       version: nextVersionNumber,
       submittedAt: timestamp,
+      submittedBy: submitterName,
+      status: "pending",
       row: cloneRow(updatedRow),
     };
-    const canonicalHistory = [...existingHistory, nextEntry];
-    const renamed = canonicalName !== updatedRow.datasetName;
+    const nextHistory = [...existingHistory, nextEntry];
     const nextHistoryMap: Record<string, ChangeVersion[]> = {
       ...changeHistoryMap,
-      [canonicalName]: canonicalHistory,
+      [datasetKey]: nextHistory,
     };
-    if (renamed) {
-      delete nextHistoryMap[canonicalName];
-      nextHistoryMap[updatedRow.datasetName] = canonicalHistory;
-    }
 
     setChangeHistoryMap(nextHistoryMap);
-
-    setRows(prev =>
-      prev.map(row => (row.datasetName === canonicalName ? cloneRow(updatedRow) : row)),
-    );
-
-    setDeadlineMap(prev => {
-      const next = { ...prev };
-      const nextDeadlineValue = updatedRow.deadline ?? "";
-      delete next[canonicalName];
-      next[updatedRow.datasetName] = nextDeadlineValue;
-      return next;
-    });
-
-    if (renamed) {
-      const originalEntry = originalRowMapRef.current[canonicalName];
-      if (originalEntry) {
-        delete originalRowMapRef.current[canonicalName];
-        originalRowMapRef.current[updatedRow.datasetName] = originalEntry;
-      }
-    }
+    syncApprovedState(nextHistoryMap);
 
     setSelectedRow(cloneRow(updatedRow));
     setEditingRow(null);
     setIsEditing(false);
+    setSelectedDatasetName(datasetKey);
+    setActiveVersionMap(prev => ({
+      ...prev,
+      [datasetKey]: nextHistory.length,
+    }));
+  }, [changeHistoryMap, displayName, editingRow, selectedDatasetName, syncApprovedState]);
 
-    setSelectedDatasetName(updatedRow.datasetName);
-    setActiveVersionMap(prev => {
-      const next = { ...prev, [updatedRow.datasetName]: canonicalHistory.length };
-      if (renamed) {
-        delete next[canonicalName];
-      }
-      return next;
-    });
-
-    const serialised = serialiseChangeRequest(nextHistoryMap);
-    changeHistorySourceRef.current = serialised;
-    initialChangeHistoryRef.current = nextHistoryMap;
-    if (onChangeRequestUpdate) {
-      onChangeRequestUpdate(serialised);
+  const handleApproveActiveVersion = React.useCallback(() => {
+    if (!selectedDatasetName || activeVersionIndex === 0) {
+      return;
     }
-  }, [changeHistoryMap, editingRow, onChangeRequestUpdate, selectedDatasetName]);
+    const history = changeHistoryMap[selectedDatasetName];
+    if (!history || history.length < activeVersionIndex) {
+      return;
+    }
+    const changeIndex = activeVersionIndex - 1;
+    const targetEntry = history[changeIndex];
+    if (!targetEntry || targetEntry.status === "approved") {
+      return;
+    }
+    const approvalTimestamp = new Date().toISOString();
+    const approverName = displayName;
+    const approvedEntry: ChangeVersion = {
+      ...targetEntry,
+      status: "approved",
+      approval: {
+        by: approverName,
+        at: approvalTimestamp,
+      },
+    };
+    const nextHistory = history.map((entry, index) => (index === changeIndex ? approvedEntry : entry));
+    const nextHistoryMap: Record<string, ChangeVersion[]> = {
+      ...changeHistoryMap,
+      [selectedDatasetName]: nextHistory,
+    };
+    setChangeHistoryMap(nextHistoryMap);
+    syncApprovedState(nextHistoryMap);
+
+    const approvedRow = cloneRow(approvedEntry.row);
+    setSelectedRow(approvedRow);
+    setEditingRow(null);
+    setIsEditing(false);
+    setActiveVersionMap(prev => ({
+      ...prev,
+      [selectedDatasetName]: 0,
+    }));
+    setCompareMode("inline");
+  }, [activeVersionIndex, changeHistoryMap, displayName, selectedDatasetName, setCompareMode, syncApprovedState]);
 
   const enterDashboard = React.useCallback(() => {
     setIsLanding(false);
@@ -706,15 +1023,37 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
   const heading = title || "Strategic datasets readiness";
   const filterBarLabel = `${headerLabel}: ${heading} filters`;
   const filterMetricLabel = `${filteredSummary.total} of ${totals.total} datasets currently in view`;
-  const trimmedUserName = userName?.trim();
-  const displayName = trimmedUserName && trimmedUserName.length > 0 ? trimmedUserName : "Data Steward";
-  const changeHistoryEntries = selectedDatasetName ? changeHistoryMap[selectedDatasetName] ?? [] : [];
-  const activeChangeEntry = activeVersionIndex > 0 ? changeHistoryEntries[activeVersionIndex - 1] : undefined;
-  const viewingBadge = activeVersionIndex === 0 ? "Original" : `Version ${activeChangeEntry?.version ?? activeVersionIndex}`;
-  const viewingTimestampLabel = activeVersionIndex === 0 ? "Recorded from source" : formatTimestamp(activeChangeEntry?.submittedAt ?? "");
-
   const detailRow = isEditing && editingRow ? editingRow : selectedRow;
   const detailTitleId = detailRow ? `dataset-detail-${toSlug(detailRow.datasetName)}` : undefined;
+
+  const baselineRow = React.useMemo(() => {
+    if (!selectedDatasetName) {
+      return null;
+    }
+    return baselineRowMapRef.current[selectedDatasetName] ?? rows.find(row => row.datasetName === selectedDatasetName) ?? null;
+  }, [rows, selectedDatasetName]);
+
+  const { sections: comparisonSections, fieldDiff, sectionDiff } = React.useMemo(() => buildComparisonData(baselineRow, detailRow), [baselineRow, detailRow]);
+
+  const selectedMetadata = selectedDatasetName ? rowMetadata[selectedDatasetName] : undefined;
+  const baselineLabel = selectedMetadata?.baselineLabel ?? "Original dataset";
+
+  const changeHistoryEntries = selectedDatasetName ? changeHistoryMap[selectedDatasetName] ?? [] : [];
+  const activeChangeEntry = activeVersionIndex > 0 ? changeHistoryEntries[activeVersionIndex - 1] : undefined;
+  const viewingBadge = activeVersionIndex === 0 ? baselineLabel : `Version ${activeChangeEntry?.version ?? activeVersionIndex}`;
+  const viewingTimestampLabel = activeVersionIndex === 0
+    ? selectedMetadata?.approvedAt
+      ? `Approved ${formatTimestamp(selectedMetadata.approvedAt)}`
+      : "Recorded from source"
+    : activeChangeEntry?.status === "approved"
+      ? `Approved ${formatTimestamp(activeChangeEntry.approval?.at ?? activeChangeEntry.submittedAt)}`
+      : `Submitted ${formatTimestamp(activeChangeEntry?.submittedAt ?? "")}`;
+  const activeVersion = activeChangeEntry;
+  const canApprove = activeVersionIndex > 0 && activeChangeEntry?.status !== "approved";
+  const comparisonTargetLabel =
+    activeVersionIndex === 0
+      ? baselineLabel
+      : `Version ${activeChangeEntry?.version ?? activeVersionIndex} (${activeChangeEntry?.status === "approved" ? "Approved" : "Pending"})`;
 
   const searchState: SearchUiState = {
     open: searchOpen,
@@ -803,6 +1142,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
                 onDeadlineChange={handleDeadlineChange}
                 onRowSelect={openDetail}
                 filtersAppliedLabel={filtersAppliedLabel}
+                rowMetadata={rowMetadata}
               />
             </div>
             <DetailPanel
@@ -814,8 +1154,19 @@ export const DataTableView: React.FC<DataTableViewProps> = ({
               selectedDatasetName={selectedDatasetName}
               changeHistoryEntries={changeHistoryEntries}
               activeVersionIndex={activeVersionIndex}
+              activeVersion={activeVersion}
+              baselineRow={baselineRow}
+              baselineLabel={baselineLabel}
+              comparisonTargetLabel={comparisonTargetLabel}
+              comparisonSections={comparisonSections}
+              sectionDiff={sectionDiff}
+              fieldDiff={fieldDiff}
+              compareMode={compareMode}
+              onCompareModeChange={handleCompareModeChange}
               regionOptions={regionOptions}
               languageOptions={languageOptions}
+              onApproveActiveVersion={handleApproveActiveVersion}
+              canApprove={canApprove}
               onClose={closeDetail}
               onStartEdit={startEdit}
               onCancelEdit={cancelEdit}
